@@ -393,10 +393,10 @@ class FileUploadHandler {
                         <h4>Path Pattern</h4>
                         <div class="aggregation-options">
                             <label class="aggregation-option">
-                                <input type="radio" name="path-pattern" value="switchbacks" checked>
+                                <input type="radio" name="path-pattern" value="spiral" checked>
                                 <div class="option-content">
-                                    <strong>⛰️ Switchbacks</strong>
-                                    <p>Meandering path transitioning to sharp switchbacks toward summit</p>
+                                    <strong>🌀 Spiral</strong>
+                                    <p>Spiral path that explores the full circle and converges to the center</p>
                                 </div>
                             </label>
                         </div>
@@ -460,7 +460,7 @@ class FileUploadHandler {
         const modal = document.querySelector('.aggregation-modal-overlay');
         const aggregationMode = modal.querySelector('input[name="aggregation-mode"]:checked').value;
         const elevationMode = modal.querySelector('input[name="elevation-mode"]:checked').value;
-        const pathPattern = modal.querySelector('input[name="path-pattern"]:checked')?.value || 'switchbacks';
+        const pathPattern = modal.querySelector('input[name="path-pattern"]:checked')?.value || 'spiral';
         
         modal.remove();
         
@@ -1083,8 +1083,8 @@ class FileUploadHandler {
 
         // Generate fictional coordinates based on path pattern
         let fictionalPoints;
-        if (pathPattern === 'switchbacks') {
-            fictionalPoints = this.generateSwitchbackPath(allPoints, elevationMode);
+        if (pathPattern === 'spiral') {
+            fictionalPoints = this.generateSpiralPath(allPoints, elevationMode);
         } else {
             throw new Error(`Unknown path pattern: ${pathPattern}`);
         }
@@ -1125,9 +1125,9 @@ class FileUploadHandler {
         return aggregatedRoute;
     }
 
-    // Generate switchback path coordinates
-    generateSwitchbackPath(points, elevationMode) {
-        console.log('⛰️ Generating switchback path pattern...');
+    // Generate spiral path coordinates
+    generateSpiralPath(points, elevationMode) {
+        console.log('🌀 Generating spiral path pattern...');
         
         // Define circle parameters for realistic mountain proportions
         const centerLat = 0; // We'll center at origin for simplicity
@@ -1197,15 +1197,15 @@ class FileUploadHandler {
             point.originalElevation = point.elevation; // Keep original for reference
         });
         
-        // Calculate number of switchbacks based on elevation range and route length
-        const numSwitchbacks = Math.max(4, Math.min(10, Math.floor(elevationRange / 100))); // 4-10 switchbacks
-        console.log(`🔄 Creating ${numSwitchbacks} switchbacks for elevation range of ${elevationRange.toFixed(1)}m`);
+        // Calculate number of spiral turns based on elevation range and route length
+        const numSpiralTurns = Math.max(2, Math.min(4, Math.floor(elevationRange / 200))); // 2-4 spiral turns
+        console.log(`🌀 Creating ${numSpiralTurns} spiral turns for elevation range of ${elevationRange.toFixed(1)}m`);
         
-        // More points for ultra-smooth switchbacks and curves
+        // More points for ultra-smooth spiral curves
         const targetPoints = Math.max(processedPoints.length, 10000); // 10k points for smooth curves
         let interpolatedPoints = [];
         
-        // Interpolate to get more points for smoother switchbacks
+        // Interpolate to get more points for smoother spiral
         for (let i = 0; i < targetPoints; i++) {
             const progress = i / (targetPoints - 1);
             const sourceIndex = progress * (processedPoints.length - 1);
@@ -1229,53 +1229,36 @@ class FileUploadHandler {
             });
         }
         
-        console.log(`🔄 Interpolated to ${interpolatedPoints.length} points for ultra-smooth switchbacks`);
+        console.log(`🌀 Interpolated to ${interpolatedPoints.length} points for ultra-smooth spiral`);
         
         return interpolatedPoints.map((point, i) => {
             const progress = point.progress;
             const originalElevation = point.elevation; // Preserve original elevation for data integrity
             const visualElevation = point.scaledElevation; // Use scaled elevation for realistic 3D appearance
             
-            // Generate a wiggly, natural mountain path
+            // Create a simple spiral that explores the full circle naturally
             let lat, lon;
             
-            // Start at front of circle (bottom) and end at back (top)
-            // Front = -π/2 (bottom), Back = π/2 (top)
-            const startAngle = -Math.PI / 2; // Front of circle
-            const endAngle = Math.PI / 2;    // Back of circle
+            // Number of complete spirals around the circle
+            const spiralTurns = 2.5; // 2.5 full rotations to explore different areas
             
-            // Base progression from front to back
-            const baseAngle = startAngle + (endAngle - startAngle) * progress;
+            // Start angle with some randomness but not chaos
+            const baseRotation = progress * spiralTurns * 2 * Math.PI;
+            const naturalVariation = Math.sin(progress * Math.PI * 6) * 0.3 + Math.cos(progress * Math.PI * 8.5) * 0.2;
+            const finalAngle = baseRotation + naturalVariation;
             
-            // Create natural wiggly path with varying intensity
-            // Use point index for consistent randomness (not Math.random())
-            const seed1 = Math.sin(i * 0.01) * 0.5;
-            const seed2 = Math.cos(i * 0.013) * 0.3;
-            const seed3 = Math.sin(i * 0.007) * 0.2;
+            // Gradually spiral inward from outer edge to center
+            const startRadius = usableRadius * 0.9; // Start at 90% of radius
+            const endRadius = usableRadius * 0.4;   // End at 40% of radius
+            const currentRadius = startRadius - (startRadius - endRadius) * progress;
             
-            // Multiple layers of wiggle for natural randomness
-            const primaryWiggle = Math.sin(progress * Math.PI * 4 + seed1) * 0.3; // Main path variation
-            const secondaryWiggle = Math.cos(progress * Math.PI * 8 + seed2) * 0.15; // Medium details
-            const fineWiggle = Math.sin(progress * Math.PI * 16 + seed3) * 0.08; // Fine variations
+            // Add gentle radius variations for natural feel
+            const radiusVariation = Math.sin(progress * Math.PI * 4.3) * 0.1 + Math.cos(progress * Math.PI * 7.2) * 0.08;
+            const finalRadius = currentRadius * (1 + radiusVariation);
             
-            // Combine all wiggle effects
-            const totalWiggle = primaryWiggle + secondaryWiggle + fineWiggle;
-            
-            // Variable radius - closer to center as we progress, with some variation
-            const baseRadiusProgress = 0.8 - progress * 0.4; // 80% to 40% of radius
-            const radiusVariation = Math.sin(progress * Math.PI * 3 + seed1) * 0.1; // Random radius variation
-            const currentRadius = usableRadius * (baseRadiusProgress + radiusVariation);
-            
-            // Calculate base position
-            const centerX = Math.cos(baseAngle) * currentRadius;
-            const centerY = Math.sin(baseAngle) * currentRadius;
-            
-            // Add perpendicular wiggle to create natural meandering
-            const wiggleX = -Math.sin(baseAngle) * totalWiggle * usableRadius * 0.4;
-            const wiggleY = Math.cos(baseAngle) * totalWiggle * usableRadius * 0.4;
-            
-            lat = centerLat + centerX + wiggleX;
-            lon = centerLon + centerY + wiggleY;
+            // Calculate position
+            lat = centerLat + Math.cos(finalAngle) * finalRadius;
+            lon = centerLon + Math.sin(finalAngle) * finalRadius;
             
             // Ensure we stay within bounds
             const distanceFromCenter = Math.sqrt(lat*lat + lon*lon);
@@ -1283,12 +1266,6 @@ class FileUploadHandler {
                 const scale = (usableRadius * 0.95) / distanceFromCenter;
                 lat *= scale;
                 lon *= scale;
-            }
-            
-            // Leave front space for future additions
-            const frontBoundary = -usableRadius * 0.8;
-            if (lat < frontBoundary) {
-                lat = frontBoundary;
             }
             
             return {
