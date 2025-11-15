@@ -695,6 +695,9 @@ class FileUploadHandler {
                     </div>
                     <div class="route-item-color" style="background-color: ${color}"></div>
                     <div class="route-item-actions">
+                        <button class="route-action-btn" onclick="window.fileUploader.downloadRoute('${this.aggregatedRoute.id}')" title="Download GPX">
+                            💾
+                        </button>
                         <button class="route-action-btn" onclick="window.fileUploader.zoomToRoute('${this.aggregatedRoute.id}')" title="Zoom to Route">
                             🔍
                         </button>
@@ -729,6 +732,9 @@ class FileUploadHandler {
                     </div>
                     <div class="route-item-color" style="background-color: ${color}"></div>
                     <div class="route-item-actions">
+                        <button class="route-action-btn" onclick="window.fileUploader.downloadRoute('${route.id}')" title="Download GPX">
+                            💾
+                        </button>
                         <button class="route-action-btn" onclick="window.fileUploader.zoomToRoute('${route.id}')" title="Zoom to Route">
                             🔍
                         </button>
@@ -773,6 +779,115 @@ class FileUploadHandler {
     // Fit map to show all routes
     fitMapToRoutes() {
         this.mapViz.fitMapToRoutes();
+    }
+
+    // Download a route as GPX file
+    downloadRoute(routeId) {
+        let routeToDownload = null;
+        let filename = 'route.gpx';
+
+        // Find the route to download (could be aggregated or individual)
+        if (routeId === this.aggregatedRoute?.id) {
+            routeToDownload = this.aggregatedRoute;
+            filename = `${this.aggregatedRoute.filename.replace(/[^a-z0-9]/gi, '_')}.gpx`;
+        } else {
+            routeToDownload = this.uploadedRoutes.find(route => route.id === routeId);
+            if (routeToDownload) {
+                filename = `${routeToDownload.filename.replace(/\.gpx$/i, '').replace(/[^a-z0-9]/gi, '_')}.gpx`;
+            }
+        }
+
+        if (!routeToDownload) {
+            alert('Route not found for download.');
+            return;
+        }
+
+        try {
+            // Generate GPX content
+            const gpxContent = this.generateGPXContent(routeToDownload);
+            
+            // Create download
+            this.downloadFile(gpxContent, filename, 'application/gpx+xml');
+            
+            console.log(`📥 Downloaded route: ${filename}`);
+        } catch (error) {
+            console.error('❌ Failed to download route:', error);
+            alert('Failed to download route. Please check the console for details.');
+        }
+    }
+
+    // Generate GPX content from route data
+    generateGPXContent(route) {
+        const now = new Date().toISOString();
+        const routeName = route.metadata?.name || route.filename || 'Route';
+        const routeDescription = route.metadata?.description || `Generated route with ${route.points.length} points`;
+
+        // GPX header
+        let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="RouteCoinMe" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>${this.escapeXml(routeName)}</name>
+    <desc>${this.escapeXml(routeDescription)}</desc>
+    <time>${now}</time>
+  </metadata>
+  <trk>
+    <name>${this.escapeXml(routeName)}</name>
+    <desc>${this.escapeXml(routeDescription)}</desc>
+    <trkseg>
+`;
+
+        // Add track points
+        route.points.forEach(point => {
+            gpx += `      <trkpt lat="${point.lat}" lon="${point.lon}">
+`;
+            if (point.elevation !== undefined && point.elevation !== null) {
+                gpx += `        <ele>${point.elevation}</ele>
+`;
+            }
+            if (point.timestamp) {
+                const timestamp = new Date(point.timestamp).toISOString();
+                gpx += `        <time>${timestamp}</time>
+`;
+            }
+            gpx += `      </trkpt>
+`;
+        });
+
+        // GPX footer
+        gpx += `    </trkseg>
+  </trk>
+</gpx>`;
+
+        return gpx;
+    }
+
+    // Escape XML special characters
+    escapeXml(text) {
+        if (typeof text !== 'string') return text;
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    // Download file helper
+    downloadFile(content, filename, mimeType = 'text/plain') {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.style.display = 'none';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up the URL object
+        setTimeout(() => URL.revokeObjectURL(url), 100);
     }
 
     // Zoom to specific route
