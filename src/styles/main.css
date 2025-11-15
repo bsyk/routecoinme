@@ -466,7 +466,7 @@ body {
 }
 
 .control-bottom-right {
-    bottom: 45px; /* Above the status bar */
+    bottom: 3px; /* Above the status bar */
     right: 15px;
     flex-direction: column;
     align-items: flex-end;
