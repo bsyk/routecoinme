@@ -1,5 +1,6 @@
 // RouteCoinMe - Main Application Entry Point
 import StravaAuth from './auth/strava-auth.js';
+import FileUploadHandler from './ui/file-upload.js';
 import { config } from './config/app-config.js';
 
 console.log('🏔️ RouteCoinMe - Loading...');
@@ -8,12 +9,14 @@ console.log('🏔️ RouteCoinMe - Loading...');
 class RouteCoinMe {
     constructor() {
         this.stravaAuth = null;
+        this.fileUploader = null;
         this.init();
     }
 
     init() {
         console.log('🚀 Initializing RouteCoinMe application...');
         this.initializeAuth();
+        this.initializeFileUpload();
         this.setupEventListeners();
         this.displayWelcomeMessage();
     }
@@ -29,7 +32,20 @@ class RouteCoinMe {
         console.log('🔐 Strava authentication initialized');
     }
 
+    initializeFileUpload() {
+        // Initialize GPX file upload handler
+        this.fileUploader = new FileUploadHandler();
+        
+        // Make it globally accessible for UI interactions
+        window.fileUploader = this.fileUploader;
+        
+        console.log('📁 File upload handler initialized');
+    }
+
     setupEventListeners() {
+        // Add click handler for main demo area when not authenticated
+        this.setupDemoAreaClick();
+        
         // Log that we're ready
         document.addEventListener('DOMContentLoaded', () => {
             console.log('✅ RouteCoinMe loaded successfully');
@@ -37,10 +53,46 @@ class RouteCoinMe {
         });
     }
 
+    setupDemoAreaClick() {
+        document.addEventListener('click', (event) => {
+            const demoArea = document.querySelector('.demo-placeholder');
+            if (demoArea && demoArea.contains(event.target) && 
+                !this.stravaAuth.isAuthenticated() && 
+                !demoArea.querySelector('.gpx-upload-area')) {
+                
+                // If not authenticated and no routes loaded, show upload option
+                this.showUploadOption();
+            }
+        });
+    }
+
+    showUploadOption() {
+        const demoArea = document.querySelector('.demo-placeholder');
+        if (demoArea) {
+            demoArea.innerHTML = `
+                <h3>🏔️ Ready to Analyze Your Routes?</h3>
+                <p>Upload GPX files to start aggregating and visualizing your cycling adventures</p>
+                
+                <div class="upload-actions">
+                    <button class="btn btn-primary" onclick="window.fileUploader.triggerFileUpload()">
+                        📁 Upload GPX Files
+                    </button>
+                    <button class="btn btn-secondary" onclick="window.stravaAuth.authenticate()">
+                        🔗 Connect Strava Instead
+                    </button>
+                </div>
+                
+                <div class="drop-zone-hint">
+                    <p>💡 You can also drag & drop GPX files anywhere on this page</p>
+                </div>
+            `;
+        }
+    }
+
     showSetupInstructions() {
         if (config.strava.clientId === 'YOUR_STRAVA_CLIENT_ID_HERE') {
             console.warn(`
-� SETUP REQUIRED:
+🔧 SETUP REQUIRED:
 
 To connect with Strava, you need to:
 
@@ -51,6 +103,8 @@ To connect with Strava, you need to:
 5. Update src/config/app-config.js with your Client ID
 
 Current callback domain setting should be: localhost:3000
+
+💡 Alternatively, you can upload GPX files directly without Strava!
             `);
         }
     }
@@ -64,15 +118,16 @@ This is your GPS route aggregation and 3D visualization app.
 Current Status:
 ✅ Basic web application structure
 ✅ Strava OAuth integration ready
-⏳ Configure your Strava Client ID in src/config/app-config.js
+✅ GPX file upload functionality
+⏳ Route aggregation algorithms (coming next)
 
-Next steps:
-- Set up Strava API credentials
-- Implement GPX fetching from Strava
-- Build route aggregation algorithms
-- Develop 3D visualization with D3.js and Three.js
+Features Available:
+- Upload and parse GPX files
+- Drag & drop support
+- Route statistics calculation
+- Local storage persistence
 
-Ready to start building! 🚀
+Ready to upload some GPX files! 🚀
         `);
     }
 }
