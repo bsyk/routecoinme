@@ -440,6 +440,104 @@ body {
     height: 100%;
 }
 
+/* Floating Control Overlays */
+.control-overlay {
+    position: absolute;
+    z-index: 1000;
+    display: flex;
+    gap: 8px;
+    pointer-events: none; /* Allow clicks to pass through the container */
+}
+
+.control-overlay > * {
+    pointer-events: auto; /* Re-enable clicks on the actual controls */
+}
+
+.control-top-left {
+    top: 15px;
+    left: 15px;
+    flex-direction: column;
+}
+
+.control-top-right {
+    top: 15px;
+    right: 15px;
+    flex-direction: row;
+}
+
+.control-bottom-right {
+    bottom: 45px; /* Above the status bar */
+    right: 15px;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+/* Control Buttons */
+.control-btn {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 6px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.control-btn:hover {
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-1px);
+}
+
+.control-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Updated Control Checkboxes for floating layout */
+.control-overlay .control-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    margin-bottom: 6px;
+    white-space: nowrap;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.control-overlay .control-checkbox:hover {
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateX(-2px);
+}
+
+.control-overlay .control-checkbox input[type="checkbox"] {
+    margin: 0;
+    width: 16px;
+    height: 16px;
+    accent-color: #2563eb;
+}
+
+.control-overlay .control-checkbox span {
+    color: var(--text-primary);
+    user-select: none;
+}
+
 /* 3D Viewer Controls */
 .viewer-3d-controls {
     position: absolute;

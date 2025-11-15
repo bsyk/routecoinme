@@ -205,38 +205,34 @@ class FileUploadHandler {
 
                 <!-- 3D Viewer Container -->
                 <div class="viewer-3d-container" id="viewer-3d-container" style="display: ${this.currentViewMode === '3d' ? 'block' : 'none'}">
-                    <div id="route-3d-viewer"></div>
-                    <div class="viewer-3d-controls">
-                        <div class="control-panel">
-                            <div class="control-group">
-                                <label>Camera Controls</label>
-                                <div class="zoom-controls">
-                                    <button class="zoom-btn" onclick="window.fileUploader.zoomIn3D()" title="Zoom In">🔍+</button>
-                                    <button class="zoom-btn" onclick="window.fileUploader.zoomOut3D()" title="Zoom Out">🔍-</button>
-                                    <button class="zoom-btn" onclick="window.fileUploader.fitToView3D()" title="Fit to View">📐</button>
-                                    <button class="zoom-btn" onclick="window.fileUploader.resetView3D()" title="Reset View">🏠</button>
-                                </div>
-                            </div>
-                            <div class="control-group">
-                                <label>Elevation Exaggeration</label>
-                                <input type="range" class="control-slider" id="elevation-slider" min="1" max="10" step="0.5" value="3" 
-                                       onchange="window.fileUploader.updateElevationExaggeration(this.value)">
-                                <span id="elevation-value">3x</span>
-                            </div>
-                            <div class="control-group">
-                                <div class="control-checkbox">
-                                    <input type="checkbox" id="filled-area-toggle" checked 
-                                           onchange="window.fileUploader.toggleFilledArea(this.checked)">
-                                    <label for="filled-area-toggle">Show Filled Area</label>
-                                </div>
-                                <div class="control-checkbox">
-                                    <input type="checkbox" id="climbing-only-toggle" 
-                                           onchange="window.fileUploader.toggleClimbingOnly(this.checked)">
-                                    <label for="climbing-only-toggle">Climbing Only</label>
-                                </div>
-                            </div>
-                        </div>
+                    <div id="route-3d-viewer" style="width: 100%; height: 100%; position: relative;"></div>
+                    
+                    <!-- Zoom Controls - Top Left -->
+                    <div class="control-overlay control-top-left">
+                        <button class="control-btn" onclick="window.fileUploader.zoomIn3D()" title="Zoom In">+</button>
+                        <button class="control-btn" onclick="window.fileUploader.zoomOut3D()" title="Zoom Out">−</button>
                     </div>
+                    
+                    <!-- View Controls - Top Right -->
+                    <div class="control-overlay control-top-right">
+                        <button class="control-btn" onclick="window.fileUploader.fitToView3D()" title="Fit to View">△</button>
+                        <button class="control-btn" onclick="window.fileUploader.resetView3D()" title="Reset View">🏠</button>
+                    </div>
+                    
+                    <!-- Display Options - Bottom Right -->
+                    <div class="control-overlay control-bottom-right">
+                        <label class="control-checkbox">
+                            <input type="checkbox" id="filled-area-toggle" checked 
+                                   onchange="window.fileUploader.toggleFilledArea(this.checked)">
+                            <span>Filled Areas</span>
+                        </label>
+                        <label class="control-checkbox">
+                            <input type="checkbox" id="climbing-only-toggle" 
+                                   onchange="window.fileUploader.toggleClimbingOnly(this.checked)">
+                            <span>Climbing Only</span>
+                        </label>
+                    </div>
+                    
                     <div class="viewer-3d-status">
                         <span>🎮 Mouse: rotate • Wheel: zoom • ${totalRoutes} routes loaded</span>
                     </div>
