@@ -378,6 +378,27 @@ class FileUploadHandler {
                                     <p>Plot elevation over time with automatic time step selection</p>
                                 </div>
                             </label>
+                            
+                            <label class="aggregation-option">
+                                <input type="radio" name="aggregation-mode" value="fictional">
+                                <div class="option-content">
+                                    <strong>🎨 Fictional Route</strong>
+                                    <p>Generate synthetic coordinates with preserved elevation and timing</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="aggregation-option-group fictional-options" style="display: none;">
+                        <h4>Path Pattern</h4>
+                        <div class="aggregation-options">
+                            <label class="aggregation-option">
+                                <input type="radio" name="path-pattern" value="switchbacks" checked>
+                                <div class="option-content">
+                                    <strong>⛰️ Switchbacks</strong>
+                                    <p>Meandering path transitioning to sharp switchbacks toward summit</p>
+                                </div>
+                            </label>
                         </div>
                     </div>
                     
@@ -416,6 +437,20 @@ class FileUploadHandler {
 
         document.body.appendChild(modal);
         
+        // Add event listeners for mode selection
+        const modeRadios = modal.querySelectorAll('input[name="aggregation-mode"]');
+        const fictionalOptions = modal.querySelector('.fictional-options');
+        
+        modeRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.value === 'fictional') {
+                    fictionalOptions.style.display = 'block';
+                } else {
+                    fictionalOptions.style.display = 'none';
+                }
+            });
+        });
+        
         // Store routes for aggregation
         this._routesToAggregate = routes;
     }
@@ -425,17 +460,22 @@ class FileUploadHandler {
         const modal = document.querySelector('.aggregation-modal-overlay');
         const aggregationMode = modal.querySelector('input[name="aggregation-mode"]:checked').value;
         const elevationMode = modal.querySelector('input[name="elevation-mode"]:checked').value;
+        const pathPattern = modal.querySelector('input[name="path-pattern"]:checked')?.value || 'switchbacks';
         
         modal.remove();
         
         console.log(`🔗 Aggregating ${this._routesToAggregate.length} routes in ${aggregationMode} mode with ${elevationMode} elevation...`);
+        if (aggregationMode === 'fictional') {
+            console.log(`🎨 Using ${pathPattern} path pattern for fictional route`);
+        }
 
         try {
             // Create aggregated route based on selected options
             this.aggregatedRoute = this.createAggregatedRouteWithOptions(
                 this._routesToAggregate, 
                 aggregationMode, 
-                elevationMode
+                elevationMode,
+                pathPattern
             );
             
             // Unselect all individual routes (but keep them in the list)
@@ -453,7 +493,12 @@ class FileUploadHandler {
             this.updateStatsDisplay();
 
             console.log(`✅ Created aggregated route: ${this.aggregatedRoute.filename}`);
-            const modeDescription = aggregationMode === 'distance' ? 'distance-based' : 'time-based';
+            let modeDescription;
+            if (aggregationMode === 'fictional') {
+                modeDescription = `fictional ${pathPattern}`;
+            } else {
+                modeDescription = aggregationMode === 'distance' ? 'distance-based' : 'time-based';
+            }
             const elevationDescription = elevationMode === 'actual' ? 'actual elevation' : 'cumulative climbing';
             
             alert(`🔗 Route Aggregation Complete!\n\nCombined ${this._routesToAggregate.length} routes using ${modeDescription} aggregation with ${elevationDescription}.\nTotal distance: ${this.aggregatedRoute.distance.toFixed(1)}km\nTotal elevation gain: ${Math.round(this.aggregatedRoute.elevationGain)}m`);
@@ -468,7 +513,7 @@ class FileUploadHandler {
     }
 
     // Create aggregated route with different options
-    createAggregatedRouteWithOptions(routes, aggregationMode, elevationMode) {
+    createAggregatedRouteWithOptions(routes, aggregationMode, elevationMode, pathPattern = 'switchbacks') {
         if (routes.length === 0) {
             throw new Error('No routes provided for aggregation');
         }
@@ -491,6 +536,8 @@ class FileUploadHandler {
             aggregatedRoute = this.createDistanceBasedAggregation(sortedRoutes, elevationMode);
         } else if (aggregationMode === 'time') {
             aggregatedRoute = this.createTimeBasedAggregation(sortedRoutes, elevationMode);
+        } else if (aggregationMode === 'fictional') {
+            aggregatedRoute = this.createFictionalRouteAggregation(sortedRoutes, elevationMode, pathPattern);
         } else {
             throw new Error(`Unknown aggregation mode: ${aggregationMode}`);
         }
@@ -998,6 +1045,286 @@ class FileUploadHandler {
         });
 
         return aggregatedRoute;
+    }
+
+    // Create fictional route aggregation
+    createFictionalRouteAggregation(routes, elevationMode, pathPattern) {
+        console.log(`🎨 Creating fictional route with ${pathPattern} pattern and ${elevationMode} elevation...`);
+        
+        // First, get all points from all routes in chronological order (like distance-based aggregation)
+        let allPoints = [];
+        let totalDistance = 0;
+        let totalElevationGain = 0;
+        let totalElevationLoss = 0;
+        let totalDuration = 0;
+
+        routes.forEach(route => {
+            // Add all points from this route while preserving elevation and timing
+            route.points.forEach(point => {
+                allPoints.push({
+                    elevation: point.elevation,
+                    timestamp: point.timestamp,
+                    originalLat: point.lat,
+                    originalLon: point.lon
+                });
+            });
+
+            totalDistance += route.distance || 0;
+            totalElevationGain += route.elevationGain || 0;
+            totalElevationLoss += route.elevationLoss || 0;
+            totalDuration += route.duration || 0;
+        });
+
+        if (allPoints.length === 0) {
+            throw new Error('No points found in routes for fictional generation');
+        }
+
+        console.log(`🔧 Processing ${allPoints.length} points for fictional ${pathPattern} route...`);
+
+        // Generate fictional coordinates based on path pattern
+        let fictionalPoints;
+        if (pathPattern === 'switchbacks') {
+            fictionalPoints = this.generateSwitchbackPath(allPoints, elevationMode);
+        } else {
+            throw new Error(`Unknown path pattern: ${pathPattern}`);
+        }
+
+        // Create the aggregated route object
+        const aggregatedRoute = {
+            id: this.generateRouteId(),
+            filename: `Fictional Route (${routes.length} routes) - ${pathPattern} ${elevationMode === 'actual' ? 'Elevation' : 'Cumulative'}`,
+            points: fictionalPoints,
+            distance: totalDistance,
+            elevationGain: totalElevationGain,
+            elevationLoss: totalElevationLoss,
+            duration: totalDuration,
+            uploadTime: Date.now(),
+            metadata: {
+                name: `Fictional ${pathPattern} Route - ${routes.map(r => r.filename).join(', ')}`,
+                description: `Synthetic ${pathPattern} route preserving elevation and timing from ${routes.length} routes with ${elevationMode} elevation`,
+                aggregationMode: 'fictional',
+                elevationMode: elevationMode,
+                pathPattern: pathPattern,
+                sourceRoutes: routes.map(r => ({
+                    id: r.id,
+                    filename: r.filename,
+                    timestamp: this.extractRouteTimestamp(r)
+                }))
+            }
+        };
+
+        console.log(`✅ Fictional ${pathPattern} route created:`, {
+            filename: aggregatedRoute.filename,
+            totalPoints: aggregatedRoute.points.length,
+            pathPattern: pathPattern,
+            totalDistance: aggregatedRoute.distance.toFixed(1),
+            totalElevationGain: Math.round(aggregatedRoute.elevationGain),
+            sourceRoutes: aggregatedRoute.metadata.sourceRoutes.length
+        });
+
+        return aggregatedRoute;
+    }
+
+    // Generate switchback path coordinates
+    generateSwitchbackPath(points, elevationMode) {
+        console.log('⛰️ Generating switchback path pattern...');
+        
+        // Define circle parameters for realistic mountain proportions
+        const centerLat = 0; // We'll center at origin for simplicity
+        const centerLon = 0;
+        const maxRadius = 0.4; // ~40km radius in degrees for realistic mountain scale
+        const border = maxRadius * 0.05; // 5% border around edge
+        const usableRadius = maxRadius - border;
+        
+        // First, process elevation data properly to preserve accuracy
+        let processedPoints = [];
+        
+        if (elevationMode === 'cumulative') {
+            // For cumulative mode, we need to calculate the cumulative climbing properly
+            // This should track total positive elevation change across all points
+            console.log('📈 Processing cumulative climbing across all routes...');
+            
+            let cumulativeClimbing = 0;
+            let lastElevation = null;
+            
+            for (let i = 0; i < points.length; i++) {
+                const point = points[i];
+                
+                // Track cumulative positive elevation gain
+                if (lastElevation !== null && point.elevation > lastElevation) {
+                    cumulativeClimbing += (point.elevation - lastElevation);
+                }
+                lastElevation = point.elevation;
+                
+                processedPoints.push({
+                    ...point,
+                    elevation: cumulativeClimbing, // Set elevation to cumulative climbing total
+                    originalElevation: point.elevation, // Keep original for reference
+                    progress: i / (points.length - 1) // 0 to 1
+                });
+            }
+            
+            console.log(`📊 Total cumulative climbing calculated: ${cumulativeClimbing.toFixed(1)}m`);
+            
+        } else {
+            // For actual elevation mode, just preserve the original elevations
+            for (let i = 0; i < points.length; i++) {
+                const point = points[i];
+                processedPoints.push({
+                    ...point,
+                    elevation: point.elevation, // Keep exact original elevation
+                    progress: i / (points.length - 1) // 0 to 1
+                });
+            }
+        }
+        
+        const maxElevation = Math.max(...processedPoints.map(p => p.elevation));
+        const minElevation = Math.min(...processedPoints.map(p => p.elevation));
+        const elevationRange = maxElevation - minElevation;
+        
+        console.log(`📊 Elevation range: ${minElevation.toFixed(1)}m to ${maxElevation.toFixed(1)}m (${elevationRange.toFixed(1)}m range)`);
+        
+        // Scale elevations to a normalized range of 0-10000m
+        // This provides good 3D visualization without being too extreme
+        const maxScaledHeight = 10000; // 10km max height for good 3D appearance
+        const elevationScale = elevationRange > 0 ? maxScaledHeight / elevationRange : 1;
+        
+        console.log(`📏 Scaling elevation by factor ${elevationScale.toFixed(4)} to normalize range 0-${maxScaledHeight}m`);
+        
+        // Apply scaling to all processed points
+        processedPoints.forEach(point => {
+            point.scaledElevation = (point.elevation - minElevation) * elevationScale;
+            point.originalElevation = point.elevation; // Keep original for reference
+        });
+        
+        // Calculate number of switchbacks based on elevation range and route length
+        const numSwitchbacks = Math.max(4, Math.min(10, Math.floor(elevationRange / 100))); // 4-10 switchbacks
+        console.log(`🔄 Creating ${numSwitchbacks} switchbacks for elevation range of ${elevationRange.toFixed(1)}m`);
+        
+        // More points for ultra-smooth switchbacks and curves
+        const targetPoints = Math.max(processedPoints.length, 10000); // 10k points for smooth curves
+        let interpolatedPoints = [];
+        
+        // Interpolate to get more points for smoother switchbacks
+        for (let i = 0; i < targetPoints; i++) {
+            const progress = i / (targetPoints - 1);
+            const sourceIndex = progress * (processedPoints.length - 1);
+            const lowerIndex = Math.floor(sourceIndex);
+            const upperIndex = Math.min(Math.ceil(sourceIndex), processedPoints.length - 1);
+            const t = sourceIndex - lowerIndex;
+            
+            const lowerPoint = processedPoints[lowerIndex];
+            const upperPoint = processedPoints[upperIndex];
+            
+            // Interpolate both original and scaled elevation
+            const originalElevation = lowerPoint.elevation + (upperPoint.elevation - lowerPoint.elevation) * t;
+            const scaledElevation = lowerPoint.scaledElevation + (upperPoint.scaledElevation - lowerPoint.scaledElevation) * t;
+            const timestamp = lowerPoint.timestamp; // Use closest timestamp
+            
+            interpolatedPoints.push({
+                elevation: originalElevation, // Keep original elevation for data integrity
+                scaledElevation: scaledElevation, // Use scaled elevation for 3D visualization
+                timestamp: timestamp,
+                progress: progress
+            });
+        }
+        
+        console.log(`🔄 Interpolated to ${interpolatedPoints.length} points for ultra-smooth switchbacks`);
+        
+        return interpolatedPoints.map((point, i) => {
+            const progress = point.progress;
+            const originalElevation = point.elevation; // Preserve original elevation for data integrity
+            const visualElevation = point.scaledElevation; // Use scaled elevation for realistic 3D appearance
+            
+            // Generate switchback pattern
+            let lat, lon;
+            
+            if (progress < 0.3) {
+                // Extended meandering approach from circle edge to center
+                const meanderProgress = progress / 0.3; // 0 to 1 over first 30%
+                
+                // Start near the edge and spiral inward
+                const startRadius = usableRadius * 0.99; // Start at 99% of radius (near edge)
+                const endRadius = usableRadius * 0.5; // End at 50% radius (middle area)
+                const currentRadius = startRadius - (startRadius - endRadius) * meanderProgress;
+                
+                // Create spiral motion with meandering
+                const spiralTurns = 2; // 2 full turns as we meander inward
+                const baseAngle = meanderProgress * spiralTurns * 2 * Math.PI; // Multiple turns
+                const meanderOffset = Math.sin(meanderProgress * Math.PI * 12) * usableRadius * 0.08; // More detailed wandering
+                const secondaryMeander = Math.cos(meanderProgress * Math.PI * 18) * usableRadius * 0.04; // Fine detail
+                
+                lat = centerLat + Math.cos(baseAngle) * (currentRadius + meanderOffset);
+                lon = centerLon + Math.sin(baseAngle) * (currentRadius + meanderOffset + secondaryMeander);
+                
+            } else {
+                // Switchback section: ultra-smooth switchbacks with gentle curves
+                const switchbackProgress = (progress - 0.3) / 0.7; // 0 to 1 for switchback section
+                
+                // Calculate which switchback we're in
+                const switchbackPosition = switchbackProgress * numSwitchbacks;
+                const currentSwitchback = Math.floor(switchbackPosition);
+                const switchbackPhase = switchbackPosition - currentSwitchback; // 0 to 1 within current switchback
+                
+                // Prevent going beyond last switchback
+                const clampedSwitchback = Math.min(currentSwitchback, numSwitchbacks - 1);
+                
+                // Vertical position: spread switchbacks evenly from bottom to top
+                const verticalProgress = clampedSwitchback / Math.max(1, numSwitchbacks - 1);
+                const baseRadius = usableRadius * (0.15 + verticalProgress * 0.5); // 15% to 65% radius based on height
+                const baseAngle = -Math.PI/2 + verticalProgress * Math.PI; // -90° to +90°
+                
+                // Horizontal oscillation: create the switchback pattern with smooth curves
+                const isRightToLeft = clampedSwitchback % 2 === 0;
+                
+                // Ultra-smooth switchback curves - longer transitions, gentler turns
+                let lateralOffset = 0;
+                
+                if (switchbackPhase < 0.25) {
+                    // Extended curve entry (25% of switchback)
+                    const curveT = switchbackPhase / 0.25;
+                    // Use smooth sine transition instead of sharp cosine
+                    const smoothT = 0.5 - 0.5 * Math.cos(curveT * Math.PI);
+                    const direction = isRightToLeft ? 1 : -1;
+                    lateralOffset = direction * usableRadius * 0.5 * (1 - smoothT);
+                    
+                } else if (switchbackPhase > 0.75) {
+                    // Extended curve exit (25% of switchback)
+                    const curveT = (switchbackPhase - 0.75) / 0.25;
+                    // Use smooth sine transition
+                    const smoothT = 0.5 - 0.5 * Math.cos(curveT * Math.PI);
+                    const direction = isRightToLeft ? -1 : 1;
+                    lateralOffset = direction * usableRadius * 0.5 * (1 - smoothT);
+                    
+                } else {
+                    // Straight section of switchback (50% of switchback)
+                    const straightProgress = (switchbackPhase - 0.25) / 0.5; // 0 to 1 for straight section
+                    const direction = isRightToLeft ? (1 - straightProgress) : straightProgress;
+                    lateralOffset = (direction * 2 - 1) * usableRadius * 0.5; // -50% to +50% of radius
+                }
+                
+                // Calculate final position
+                lat = centerLat + Math.cos(baseAngle) * baseRadius;
+                lon = centerLon + Math.sin(baseAngle) * baseRadius + 
+                      Math.cos(baseAngle + Math.PI/2) * lateralOffset;
+            }
+            
+            // Ensure we stay within bounds
+            const distanceFromCenter = Math.sqrt(lat*lat + lon*lon);
+            if (distanceFromCenter > usableRadius) {
+                const scale = usableRadius / distanceFromCenter;
+                lat *= scale;
+                lon *= scale;
+            }
+            
+            return {
+                lat: lat,
+                lon: lon,
+                elevation: visualElevation, // Use scaled elevation for realistic 3D mountain appearance
+                originalElevation: originalElevation, // Preserve original data for reference/export
+                timestamp: point.timestamp
+            };
+        });
     }
 
     // Extract timestamp from route for sorting
