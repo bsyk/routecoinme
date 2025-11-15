@@ -41,6 +41,13 @@ class Route3DVisualization {
             console.log('📦 Container element:', containerElement);
             console.log('📏 Container dimensions:', containerElement.clientWidth, 'x', containerElement.clientHeight);
             
+            // Check if container is actually visible (not display: none)
+            const containerStyle = window.getComputedStyle(containerElement);
+            if (containerStyle.display === 'none') {
+                console.warn('⚠️ Container is hidden (display: none), skipping initialization');
+                return false;
+            }
+            
             if (containerElement.clientWidth === 0 || containerElement.clientHeight === 0) {
                 console.warn('⚠️ Container has zero dimensions, retrying in 100ms...');
                 setTimeout(() => this.initialize(containerElement), 100);
@@ -55,12 +62,14 @@ class Route3DVisualization {
             this.scene.background = new THREE.Color(0xf8fafc);
             console.log('✅ Scene created');
 
-            // Create camera with better clipping planes
+            // Create camera with better clipping planes and wider field of view
             const aspect = containerElement.clientWidth / containerElement.clientHeight;
-            this.camera = new THREE.PerspectiveCamera(75, aspect, 10, 50000); // Increased far plane
-            this.camera.position.set(0, 500, 800);
+            this.camera = new THREE.PerspectiveCamera(60, aspect, 10, 200000); // Increased far plane from 50000 to 200000
+            
+            // Set preferred initial camera position for optimal viewing
+            this.camera.position.set(9066.7, 16001.4, 38808.7);
             this.camera.lookAt(0, 0, 0);
-            console.log('✅ Camera created at:', this.camera.position);
+            console.log('✅ Camera created at preferred position:', this.camera.position);
 
             // Create renderer
             this.renderer = new THREE.WebGLRenderer({ 
@@ -134,12 +143,21 @@ class Route3DVisualization {
         this.scene.add(fillLight);
     }
 
-    // Setup basic scene elements (minimal grid for initial view)
+    // Setup basic scene elements (minimal circle for initial view)
     setupBasicScene() {
-        const gridHelper = new THREE.GridHelper(2000, 20, 0x444444, 0x888888);
-        gridHelper.position.y = 0;
-        gridHelper.name = 'basic-grid';
-        this.scene.add(gridHelper);
+        // Create basic circular ground
+        const groundGeometry = new THREE.CircleGeometry(1000, 32);
+        const groundMaterial = new THREE.MeshLambertMaterial({ 
+            color: 0xf8f9fa,
+            transparent: true,
+            opacity: 0.5
+        });
+        
+        const groundPlane = new THREE.Mesh(groundGeometry, groundMaterial);
+        groundPlane.rotation.x = -Math.PI / 2;
+        groundPlane.position.y = -5;
+        groundPlane.name = 'basic-ground';
+        this.scene.add(groundPlane);
 
         const axesHelper = new THREE.AxesHelper(200);
         axesHelper.position.y = 0;
@@ -147,33 +165,48 @@ class Route3DVisualization {
         this.scene.add(axesHelper);
     }
 
-    // Setup scene elements (grid, axes) - called after routes are added
+    // Setup scene elements (circular background) - called after routes are added
     setupScene() {
-        // Calculate grid size based on current bounding box
-        let gridSize = 10000; // Default large size
+        // Calculate circle radius based on current bounding box
+        let circleRadius = 5000; // Default large radius
         
         if (this.boundingBox.minX !== Infinity) {
             const sizeX = this.boundingBox.maxX - this.boundingBox.minX;
             const sizeZ = this.boundingBox.maxZ - this.boundingBox.minZ;
             const maxRouteSize = Math.max(sizeX, sizeZ);
-            gridSize = Math.max(maxRouteSize * 3, 10000); // At least 3x route size
+            // Circle should encompass all routes with some padding
+            circleRadius = Math.max(maxRouteSize * 0.7, 2000); // 70% of route size for tight fit
         }
         
-        console.log(`🏗️ Setting up scene with grid size: ${gridSize}`);
+        console.log(`� Setting up circular background with radius: ${circleRadius}`);
         
-        // Remove existing grid if any
-        const existingGrid = this.scene.getObjectByName('ground-grid');
+        // Remove existing background elements
+        const existingCircle = this.scene.getObjectByName('circular-ground');
+        if (existingCircle) this.scene.remove(existingCircle);
+        
+        const existingGrid = this.scene.getObjectByName('circular-grid');
         if (existingGrid) this.scene.remove(existingGrid);
         
-        // Add a dynamically sized grid at ground level
-        const gridDivisions = Math.min(Math.max(Math.floor(gridSize / 200), 20), 100);
-        const gridHelper = new THREE.GridHelper(gridSize, gridDivisions, 0x444444, 0x888888);
-        gridHelper.position.y = 0;
-        gridHelper.name = 'ground-grid';
-        this.scene.add(gridHelper);
-
-        // Add axes helper (scaled to grid)
-        const axesSize = gridSize * 0.1;
+        // Create circular ground plane
+        const groundGeometry = new THREE.CircleGeometry(circleRadius, 64);
+        const groundMaterial = new THREE.MeshLambertMaterial({ 
+            color: 0xf8f9fa,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const groundPlane = new THREE.Mesh(groundGeometry, groundMaterial);
+        groundPlane.rotation.x = -Math.PI / 2; // Lay flat on ground
+        groundPlane.position.y = -5; // Slightly below ground level
+        groundPlane.name = 'circular-ground';
+        groundPlane.receiveShadow = true;
+        this.scene.add(groundPlane);
+        
+        // Create circular grid lines
+        this.createCircularGrid(circleRadius);
+        
+        // Update axes helper (scaled to circle)
+        const axesSize = circleRadius * 0.3;
         const existingAxes = this.scene.getObjectByName('axes-helper');
         if (existingAxes) this.scene.remove(existingAxes);
         
@@ -182,27 +215,86 @@ class Route3DVisualization {
         axesHelper.name = 'axes-helper';
         this.scene.add(axesHelper);
 
-        // Add reference markers scaled to grid size
-        this.clearReferenceMarkers();
-        const markerGeometry = new THREE.ConeGeometry(gridSize * 0.02, gridSize * 0.08, 8);
-        const markerMaterial = new THREE.MeshLambertMaterial({ color: 0xff6b6b });
-        
-        for (let i = 0; i < 4; i++) {
-            const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-            const angle = (i / 4) * Math.PI * 2;
-            const distance = gridSize * 0.3;
-            marker.position.set(Math.cos(angle) * distance, gridSize * 0.02, Math.sin(angle) * distance);
-            marker.name = `reference-marker-${i}`;
-            this.scene.add(marker);
-        }
+        // Add subtle edge markers instead of corner cones
+        this.createEdgeMarkers(circleRadius);
 
-        console.log(`✅ Scene elements added: ${gridSize}x${gridSize} grid, ${axesSize} axes, and markers`);
+        console.log(`✅ Circular scene created: radius ${circleRadius}, axes ${axesSize}`);
     }
 
-    // Clear reference markers
-    clearReferenceMarkers() {
-        for (let i = 0; i < 4; i++) {
-            const marker = this.scene.getObjectByName(`reference-marker-${i}`);
+    // Create circular grid lines
+    createCircularGrid(radius) {
+        const gridGroup = new THREE.Group();
+        gridGroup.name = 'circular-grid';
+        
+        // Concentric circles
+        const numCircles = 8;
+        for (let i = 1; i <= numCircles; i++) {
+            const circleRadius = (radius * i) / numCircles;
+            const circleGeometry = new THREE.RingGeometry(circleRadius - 1, circleRadius + 1, 64);
+            const circleMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xcccccc,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.DoubleSide
+            });
+            
+            const circle = new THREE.Mesh(circleGeometry, circleMaterial);
+            circle.rotation.x = -Math.PI / 2;
+            circle.position.y = 0;
+            gridGroup.add(circle);
+        }
+        
+        // Radial lines
+        const numRadials = 16;
+        for (let i = 0; i < numRadials; i++) {
+            const angle = (i / numRadials) * Math.PI * 2;
+            const geometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius)
+            ]);
+            
+            const material = new THREE.LineBasicMaterial({ 
+                color: 0xcccccc,
+                transparent: true,
+                opacity: 0.2
+            });
+            
+            const line = new THREE.Line(geometry, material);
+            gridGroup.add(line);
+        }
+        
+        this.scene.add(gridGroup);
+    }
+
+    // Create edge markers around the circle
+    createEdgeMarkers(radius) {
+        this.clearEdgeMarkers();
+        
+        const markerGeometry = new THREE.SphereGeometry(radius * 0.01, 16, 16);
+        const markerMaterial = new THREE.MeshLambertMaterial({ 
+            color: 0x64748b,
+            transparent: true,
+            opacity: 0.6
+        });
+        
+        // Place 8 markers around the circle edge
+        for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * Math.PI * 2;
+            const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+            marker.position.set(
+                Math.cos(angle) * radius * 0.9, 
+                radius * 0.01, 
+                Math.sin(angle) * radius * 0.9
+            );
+            marker.name = `edge-marker-${i}`;
+            this.scene.add(marker);
+        }
+    }
+
+    // Clear edge markers
+    clearEdgeMarkers() {
+        for (let i = 0; i < 8; i++) {
+            const marker = this.scene.getObjectByName(`edge-marker-${i}`);
             if (marker) this.scene.remove(marker);
         }
     }
@@ -212,10 +304,18 @@ class Route3DVisualization {
         let isMouseDown = false;
         let mouseX = 0;
         let mouseY = 0;
-        let targetRotationX = 0;
-        let targetRotationY = 0;
-        let currentRotationX = 0;
-        let currentRotationY = 0;
+        
+        // Initialize rotation to match preferred camera position (9066.7, 16001.4, 38808.7)
+        const preferredPos = { x: 9066.7, y: 16001.4, z: 38808.7 };
+        const preferredDistance = Math.sqrt(preferredPos.x * preferredPos.x + preferredPos.y * preferredPos.y + preferredPos.z * preferredPos.z);
+        
+        // Calculate spherical coordinates from preferred position
+        let targetRotationX = Math.asin(preferredPos.y / preferredDistance);
+        let targetRotationY = Math.atan2(preferredPos.x, preferredPos.z);
+        let currentRotationX = targetRotationX;
+        let currentRotationY = targetRotationY;
+
+        console.log(`🎮 Controls initialized with rotations: X=${(targetRotationX * 180 / Math.PI).toFixed(1)}°, Y=${(targetRotationY * 180 / Math.PI).toFixed(1)}°`);
 
         const canvas = this.renderer.domElement;
 
@@ -240,7 +340,7 @@ class Route3DVisualization {
             targetRotationY += deltaX * 0.01;
             targetRotationX += deltaY * 0.01;
 
-            // Clamp vertical rotation
+            // Constrain vertical rotation
             targetRotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, targetRotationX));
 
             mouseX = event.clientX;
@@ -269,6 +369,17 @@ class Route3DVisualization {
             this.camera.position.y = distance * Math.sin(currentRotationX);
             this.camera.position.z = distance * Math.cos(currentRotationY) * Math.cos(currentRotationX);
             this.camera.lookAt(0, 0, 0);
+            
+            // Debug: Log camera position when it changes significantly
+            const currentPos = this.camera.position;
+            if (!this.lastLoggedPos || 
+                Math.abs(currentPos.x - this.lastLoggedPos.x) > 50 ||
+                Math.abs(currentPos.y - this.lastLoggedPos.y) > 50 ||
+                Math.abs(currentPos.z - this.lastLoggedPos.z) > 50) {
+                
+                console.log(`📷 Camera Position: x=${currentPos.x.toFixed(1)}, y=${currentPos.y.toFixed(1)}, z=${currentPos.z.toFixed(1)}, distance=${distance.toFixed(1)}`);
+                this.lastLoggedPos = { ...currentPos };
+            }
         };
     }
 
@@ -279,9 +390,41 @@ class Route3DVisualization {
             return false;
         }
 
+        console.log(`🎯 3D Viewer addRoute called`);
+        console.log(`📂 Route name: ${routeData.filename || routeData.name || 'unnamed'}`);
+        console.log(`📊 Route data structure:`, Object.keys(routeData));
+        console.log(`📌 Points array:`, routeData.points ? `${routeData.points.length} points` : 'NO POINTS');
+        
+        if (!routeData || !routeData.points || routeData.points.length === 0) {
+            console.warn(`❌ Cannot add route: ${routeData.filename || routeData.name || 'unnamed'} - no valid points`);
+            return false;
+        }
+        
+        if (routeData.points && routeData.points.length > 0) {
+            console.log(`🧭 First point:`, routeData.points[0]);
+            console.log(`🧭 Last point:`, routeData.points[routeData.points.length - 1]);
+            
+            // Check if points have the right structure
+            const samplePoint = routeData.points[0];
+            const hasValidStructure = samplePoint && 
+                (typeof samplePoint.lat === 'number') && 
+                (typeof samplePoint.lon === 'number');
+                
+            if (!hasValidStructure) {
+                console.warn(`❌ Invalid point structure in route ${routeData.filename}:`, samplePoint);
+                return false;
+            }
+        }
+
         console.log('🎮 Adding route to 3D viewer:', routeData.filename, `${routeData.points.length} points`);
 
         const points3D = this.convertRoutePointsTo3D(routeData.points, this.settings.elevationExaggeration);
+        
+        if (points3D.length === 0) {
+            console.warn(`❌ No valid 3D points generated for route: ${routeData.filename}`);
+            return false;
+        }
+        
         this.updateBoundingBox(points3D);
 
         // Get color for this route
@@ -326,56 +469,88 @@ class Route3DVisualization {
 
     // Position camera to show all routes in view
     positionCameraToFitRoutes() {
+        console.log('🎯 positionCameraToFitRoutes called, boundingBox.minX:', this.boundingBox.minX);
+        
         if (this.boundingBox.minX === Infinity) {
-            // No routes yet, use default position
-            this.camera.position.set(0, 1000, 2000);
+            // No routes yet, use the preferred initial viewing position
+            this.camera.position.set(9066.7, 16001.4, 38808.7);
             this.camera.lookAt(0, 0, 0);
+            console.log(`📷 Set to preferred position (no routes): x=${this.camera.position.x}, y=${this.camera.position.y}, z=${this.camera.position.z}`);
             return;
         }
 
-        const centerX = (this.boundingBox.minX + this.boundingBox.maxX) / 2;
-        const centerY = (this.boundingBox.minY + this.boundingBox.maxY) / 2;
-        const centerZ = (this.boundingBox.minZ + this.boundingBox.maxZ) / 2;
+        console.log('📊 Routes detected, calculating optimal position...');
 
+        // Since routes are now centered at origin, calculate size from bounding box
         const sizeX = this.boundingBox.maxX - this.boundingBox.minX;
         const sizeZ = this.boundingBox.maxZ - this.boundingBox.minZ;
         const sizeY = this.boundingBox.maxY - this.boundingBox.minY;
 
-        const maxSize = Math.max(sizeX, sizeZ);
-        const distance = Math.max(maxSize * 2, 1000); // Scale camera distance to route size
-
-        // Position camera above and to the side of the route
-        this.camera.position.set(
-            centerX + distance * 0.8,
-            Math.max(centerY + distance * 0.6, maxSize * 0.5), // Scale height to route size
-            centerZ + distance * 0.8
-        );
+        const maxSize = Math.max(sizeX, sizeZ, 1000); // Minimum size for small routes
         
-        // Look at the center of the routes
-        this.camera.lookAt(centerX, centerY, centerZ);
+        // Use the preferred viewing angle proportions but scale based on route size
+        const preferredDistance = 42946.1;
+        const scaleBasedOnRoutes = Math.max(maxSize * 1.2, preferredDistance * 0.5); // Scale down for very large routes
+        const actualDistance = Math.min(scaleBasedOnRoutes, preferredDistance * 2); // Cap maximum distance
+        
+        // Maintain the same proportional viewing angle as the preferred position
+        const distanceRatio = actualDistance / preferredDistance;
+        const cameraX = 9066.7 * distanceRatio;
+        const cameraY = 16001.4 * distanceRatio;
+        const cameraZ = 38808.7 * distanceRatio;
 
-        console.log(`📷 Camera positioned at:`, this.camera.position, `looking at:`, {x: centerX, y: centerY, z: centerZ});
-        console.log(`📦 Route bounds: ${sizeX.toFixed(0)} x ${sizeY.toFixed(0)} x ${sizeZ.toFixed(0)} units`);
-        console.log(`📏 Max route size: ${maxSize.toFixed(0)}, Camera distance: ${distance.toFixed(0)}`);
+        // Position camera (routes are centered at origin)
+        this.camera.position.set(cameraX, cameraY, cameraZ);
+        
+        // Look at center of routes (origin)
+        this.camera.lookAt(0, 0, 0);
+
+        console.log(`📷 Camera positioned at: x=${this.camera.position.x.toFixed(1)}, y=${this.camera.position.y.toFixed(1)}, z=${this.camera.position.z.toFixed(1)}`);
+        console.log(`📦 Route bounds: ${sizeX.toFixed(0)} x ${sizeY.toFixed(0)} x ${sizeZ.toFixed(0)} units (centered at origin)`);
+        console.log(`🎯 Scaled distance: ${actualDistance.toFixed(0)} (ratio: ${distanceRatio.toFixed(2)})`);
     }
 
     // Convert GPS points to 3D coordinates
     convertRoutePointsTo3D(points, elevationExaggeration = 3) {
-        if (!points || points.length === 0) return [];
+        if (!points || points.length === 0) {
+            console.warn('⚠️ No points provided to convertRoutePointsTo3D');
+            return [];
+        }
+
+        console.log(`🔄 Converting ${points.length} GPS points to 3D coordinates...`);
+        
+        // Validate that points have required properties
+        const validPoints = points.filter(point => 
+            point && 
+            typeof point.lat === 'number' && 
+            typeof point.lon === 'number' && 
+            !isNaN(point.lat) && 
+            !isNaN(point.lon)
+        );
+        
+        if (validPoints.length === 0) {
+            console.warn('⚠️ No valid GPS points found!');
+            return [];
+        }
+        
+        if (validPoints.length !== points.length) {
+            console.warn(`⚠️ Filtered ${points.length - validPoints.length} invalid points`);
+        }
 
         // Find the center point for coordinate system
-        const centerLat = points.reduce((sum, p) => sum + p.lat, 0) / points.length;
-        const centerLon = points.reduce((sum, p) => sum + p.lon, 0) / points.length;
+        const centerLat = validPoints.reduce((sum, p) => sum + p.lat, 0) / validPoints.length;
+        const centerLon = validPoints.reduce((sum, p) => sum + p.lon, 0) / validPoints.length;
         
         // Find elevation range
-        const elevations = points.map(p => p.elevation || 0);
+        const elevations = validPoints.map(p => p.elevation || 0);
         const minElevation = Math.min(...elevations);
         const maxElevation = Math.max(...elevations);
         
+        console.log(`📏 GPS center: ${centerLat.toFixed(6)}, ${centerLon.toFixed(6)}`);
         console.log(`📏 Elevation range: ${minElevation}m to ${maxElevation}m`);
 
         // Convert to local coordinate system (meters from center)
-        const points3D = points.map((point, index) => {
+        const points3D = validPoints.map((point, index) => {
             // Convert lat/lon to approximate meters (rough conversion)
             const x = (point.lon - centerLon) * 111320 * Math.cos(centerLat * Math.PI / 180);
             const z = (centerLat - point.lat) * 110540; // Flip Z for typical coordinate system
@@ -388,7 +563,21 @@ class Route3DVisualization {
             return new THREE.Vector3(x, y, z);
         }).filter(point => !isNaN(point.x) && !isNaN(point.y) && !isNaN(point.z));
         
-        console.log(`🎯 Route converted: ${points3D.length} points, Y range: ${Math.min(...points3D.map(p => p.y))} to ${Math.max(...points3D.map(p => p.y))}`);
+        // Center the route around origin (0,0,0) for consistent positioning
+        if (points3D.length > 0) {
+            const routeCenterX = points3D.reduce((sum, p) => sum + p.x, 0) / points3D.length;
+            const routeCenterZ = points3D.reduce((sum, p) => sum + p.z, 0) / points3D.length;
+            
+            // Offset all points to center the route at origin
+            points3D.forEach(point => {
+                point.x -= routeCenterX;
+                point.z -= routeCenterZ;
+            });
+            
+            console.log(`🎯 Route centered: offset by (${-routeCenterX.toFixed(0)}, ${-routeCenterZ.toFixed(0)})`);
+        }
+        
+        console.log(`🎯 Route converted: ${validPoints.length} → ${points3D.length} points, Y range: ${Math.min(...points3D.map(p => p.y)).toFixed(0)} to ${Math.max(...points3D.map(p => p.y)).toFixed(0)}`);
         
         return points3D;
     }
@@ -552,7 +741,12 @@ class Route3DVisualization {
         this.routeMeshes = [];
         this.settings.colorIndex = 0;
         this.recalculateBoundingBox();
-        this.camera.position.set(0, 500, 800);
+        
+        // Reset to basic scene
+        this.setupBasicScene();
+        
+        // Return to preferred overview position
+        this.camera.position.set(9066.7, 16001.4, 38808.7);
         this.camera.lookAt(0, 0, 0);
     }
 
@@ -659,9 +853,10 @@ class Route3DVisualization {
     resetView() {
         if (!this.camera) return;
         
-        this.camera.position.set(0, 500, 800);
+        // Reset to preferred overview position
+        this.camera.position.set(9066.7, 16001.4, 38808.7);
         this.camera.lookAt(0, 0, 0);
-        console.log('🏠 Reset to default view');
+        console.log('🏠 Reset to preferred viewing angle');
     }
 }
 
