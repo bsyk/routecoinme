@@ -239,11 +239,6 @@ class FileUploadHandler {
                                    onchange="window.fileUploader.toggleFilledArea(this.checked)">
                             <span>Filled Areas</span>
                         </label>
-                        <label class="control-checkbox">
-                            <input type="checkbox" id="climbing-only-toggle" 
-                                   onchange="window.fileUploader.toggleClimbingOnly(this.checked)">
-                            <span>Climbing Only</span>
-                        </label>
                     </div>
                     
                     <div class="viewer-3d-status">
@@ -1277,12 +1272,6 @@ class FileUploadHandler {
     toggleFilledArea(show) {
         if (this.viewer3D) {
             this.viewer3D.toggleFilledArea(show);
-        }
-    }
-
-    toggleClimbingOnly(enabled) {
-        if (this.viewer3D) {
-            this.viewer3D.toggleClimbingOnly(enabled);
         }
     }
 
