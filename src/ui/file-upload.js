@@ -1249,7 +1249,7 @@ class FileUploadHandler {
             
             // Gradually spiral inward from outer edge to center
             const startRadius = usableRadius * 0.9; // Start at 90% of radius
-            const endRadius = usableRadius * 0.4;   // End at 40% of radius
+            const endRadius = usableRadius * 0.02;  // End very close to center (2% of radius)
             const currentRadius = startRadius - (startRadius - endRadius) * progress;
             
             // Add gentle radius variations for natural feel
