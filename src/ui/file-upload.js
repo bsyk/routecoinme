@@ -408,7 +408,14 @@ class FileUploadHandler {
         // Process each route in chronological order
         for (let i = 0; i < sortedRoutes.length; i++) {
             const route = sortedRoutes[i];
-            const routePoints = [...route.points];
+            // Clone the route points to avoid modifying the original data
+            const routePoints = route.points.map(point => ({
+                ...point,
+                lat: point.lat,
+                lon: point.lon,
+                elevation: point.elevation,
+                timestamp: point.timestamp
+            }));
 
             console.log(`🔧 Processing route ${i + 1}/${sortedRoutes.length}: ${route.filename} (${routePoints.length} points)`);
 
@@ -430,7 +437,7 @@ class FileUploadHandler {
                     elevation: offsetElevation
                 });
 
-                // Apply offset to all points in this route
+                // Apply offset to all points in this cloned route
                 routePoints.forEach(point => {
                     point.lat += offsetLat;
                     point.lon += offsetLon;
