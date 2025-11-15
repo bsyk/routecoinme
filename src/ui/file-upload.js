@@ -1236,92 +1236,66 @@ class FileUploadHandler {
             const originalElevation = point.elevation; // Preserve original elevation for data integrity
             const visualElevation = point.scaledElevation; // Use scaled elevation for realistic 3D appearance
             
-            // Generate switchback pattern
+            // Generate a wiggly, natural mountain path
             let lat, lon;
             
-            if (progress < 0.3) {
-                // Extended meandering approach from circle edge to center
-                const meanderProgress = progress / 0.3; // 0 to 1 over first 30%
-                
-                // Start near the edge and spiral inward
-                const startRadius = usableRadius * 0.99; // Start at 99% of radius (near edge)
-                const endRadius = usableRadius * 0.5; // End at 50% radius (middle area)
-                const currentRadius = startRadius - (startRadius - endRadius) * meanderProgress;
-                
-                // Create spiral motion with meandering
-                const spiralTurns = 2; // 2 full turns as we meander inward
-                const baseAngle = meanderProgress * spiralTurns * 2 * Math.PI; // Multiple turns
-                const meanderOffset = Math.sin(meanderProgress * Math.PI * 12) * usableRadius * 0.08; // More detailed wandering
-                const secondaryMeander = Math.cos(meanderProgress * Math.PI * 18) * usableRadius * 0.04; // Fine detail
-                
-                lat = centerLat + Math.cos(baseAngle) * (currentRadius + meanderOffset);
-                lon = centerLon + Math.sin(baseAngle) * (currentRadius + meanderOffset + secondaryMeander);
-                
-            } else {
-                // Switchback section: ultra-smooth switchbacks with gentle curves
-                const switchbackProgress = (progress - 0.3) / 0.7; // 0 to 1 for switchback section
-                
-                // Calculate which switchback we're in
-                const switchbackPosition = switchbackProgress * numSwitchbacks;
-                const currentSwitchback = Math.floor(switchbackPosition);
-                const switchbackPhase = switchbackPosition - currentSwitchback; // 0 to 1 within current switchback
-                
-                // Prevent going beyond last switchback
-                const clampedSwitchback = Math.min(currentSwitchback, numSwitchbacks - 1);
-                
-                // Vertical position: spread switchbacks evenly from bottom to top
-                const verticalProgress = clampedSwitchback / Math.max(1, numSwitchbacks - 1);
-                const baseRadius = usableRadius * (0.15 + verticalProgress * 0.5); // 15% to 65% radius based on height
-                const baseAngle = -Math.PI/2 + verticalProgress * Math.PI; // -90° to +90°
-                
-                // Horizontal oscillation: create the switchback pattern with smooth curves
-                const isRightToLeft = clampedSwitchback % 2 === 0;
-                
-                // Ultra-smooth switchback curves - longer transitions, gentler turns
-                let lateralOffset = 0;
-                
-                if (switchbackPhase < 0.25) {
-                    // Extended curve entry (25% of switchback)
-                    const curveT = switchbackPhase / 0.25;
-                    // Use smooth sine transition instead of sharp cosine
-                    const smoothT = 0.5 - 0.5 * Math.cos(curveT * Math.PI);
-                    const direction = isRightToLeft ? 1 : -1;
-                    lateralOffset = direction * usableRadius * 0.5 * (1 - smoothT);
-                    
-                } else if (switchbackPhase > 0.75) {
-                    // Extended curve exit (25% of switchback)
-                    const curveT = (switchbackPhase - 0.75) / 0.25;
-                    // Use smooth sine transition
-                    const smoothT = 0.5 - 0.5 * Math.cos(curveT * Math.PI);
-                    const direction = isRightToLeft ? -1 : 1;
-                    lateralOffset = direction * usableRadius * 0.5 * (1 - smoothT);
-                    
-                } else {
-                    // Straight section of switchback (50% of switchback)
-                    const straightProgress = (switchbackPhase - 0.25) / 0.5; // 0 to 1 for straight section
-                    const direction = isRightToLeft ? (1 - straightProgress) : straightProgress;
-                    lateralOffset = (direction * 2 - 1) * usableRadius * 0.5; // -50% to +50% of radius
-                }
-                
-                // Calculate final position
-                lat = centerLat + Math.cos(baseAngle) * baseRadius;
-                lon = centerLon + Math.sin(baseAngle) * baseRadius + 
-                      Math.cos(baseAngle + Math.PI/2) * lateralOffset;
-            }
+            // Start at front of circle (bottom) and end at back (top)
+            // Front = -π/2 (bottom), Back = π/2 (top)
+            const startAngle = -Math.PI / 2; // Front of circle
+            const endAngle = Math.PI / 2;    // Back of circle
+            
+            // Base progression from front to back
+            const baseAngle = startAngle + (endAngle - startAngle) * progress;
+            
+            // Create natural wiggly path with varying intensity
+            // Use point index for consistent randomness (not Math.random())
+            const seed1 = Math.sin(i * 0.01) * 0.5;
+            const seed2 = Math.cos(i * 0.013) * 0.3;
+            const seed3 = Math.sin(i * 0.007) * 0.2;
+            
+            // Multiple layers of wiggle for natural randomness
+            const primaryWiggle = Math.sin(progress * Math.PI * 4 + seed1) * 0.3; // Main path variation
+            const secondaryWiggle = Math.cos(progress * Math.PI * 8 + seed2) * 0.15; // Medium details
+            const fineWiggle = Math.sin(progress * Math.PI * 16 + seed3) * 0.08; // Fine variations
+            
+            // Combine all wiggle effects
+            const totalWiggle = primaryWiggle + secondaryWiggle + fineWiggle;
+            
+            // Variable radius - closer to center as we progress, with some variation
+            const baseRadiusProgress = 0.8 - progress * 0.4; // 80% to 40% of radius
+            const radiusVariation = Math.sin(progress * Math.PI * 3 + seed1) * 0.1; // Random radius variation
+            const currentRadius = usableRadius * (baseRadiusProgress + radiusVariation);
+            
+            // Calculate base position
+            const centerX = Math.cos(baseAngle) * currentRadius;
+            const centerY = Math.sin(baseAngle) * currentRadius;
+            
+            // Add perpendicular wiggle to create natural meandering
+            const wiggleX = -Math.sin(baseAngle) * totalWiggle * usableRadius * 0.4;
+            const wiggleY = Math.cos(baseAngle) * totalWiggle * usableRadius * 0.4;
+            
+            lat = centerLat + centerX + wiggleX;
+            lon = centerLon + centerY + wiggleY;
             
             // Ensure we stay within bounds
             const distanceFromCenter = Math.sqrt(lat*lat + lon*lon);
-            if (distanceFromCenter > usableRadius) {
-                const scale = usableRadius / distanceFromCenter;
+            if (distanceFromCenter > usableRadius * 0.95) {
+                const scale = (usableRadius * 0.95) / distanceFromCenter;
                 lat *= scale;
                 lon *= scale;
+            }
+            
+            // Leave front space for future additions
+            const frontBoundary = -usableRadius * 0.8;
+            if (lat < frontBoundary) {
+                lat = frontBoundary;
             }
             
             return {
                 lat: lat,
                 lon: lon,
-                elevation: visualElevation, // Use scaled elevation for realistic 3D mountain appearance
-                originalElevation: originalElevation, // Preserve original data for reference/export
+                elevation: visualElevation,
+                originalElevation: originalElevation,
                 timestamp: point.timestamp
             };
         });
