@@ -760,6 +760,26 @@ body {
     transition: background-color 0.2s ease;
 }
 
+.route-list-item.unselected {
+    opacity: 0.6;
+}
+
+.route-list-item.aggregated-route {
+    background: rgba(255, 107, 53, 0.1);
+    border-left: 3px solid #ff6b35;
+}
+
+.route-item-checkbox {
+    margin-right: 0.75rem;
+    flex-shrink: 0;
+}
+
+.route-item-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
 .route-list-item:last-child {
     border-bottom: none;
 }

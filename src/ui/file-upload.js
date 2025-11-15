@@ -10,7 +10,9 @@ class FileUploadHandler {
         this.viewer3D = new Route3DVisualization();
         this.uploadedRoutes = [];
         this.maxFiles = 10; // Reduced from 20 to help with storage limits
-        this.selectedRoutes = new Set(); // For tracking selected routes
+        this.selectedRoutes = new Set(); // For tracking selected routes for display
+        this.aggregatedRoute = null; // Store the aggregated route when created
+        this.isShowingAggregated = false; // Track if we're showing aggregated route
         this.currentViewMode = 'map'; // 'map' or '3d'
         this.is3DInitialized = false; // Track if 3D viewer has been initialized
         this.init();
@@ -144,9 +146,14 @@ class FileUploadHandler {
         routeData.id = this.generateRouteId();
         this.uploadedRoutes.push(routeData);
 
+        // Auto-select new routes for display (unless we're showing aggregated route)
+        if (!this.isShowingAggregated) {
+            this.selectedRoutes.add(routeData.id);
+        }
+
         console.log(`✅ Added route: ${routeData.filename}`);
         
-        // Add to 3D viewer if it's already initialized
+        // Add to 3D viewer if it's already initialized and route is selected
         this.addRouteTo3DViewerIfInitialized(routeData);
     }
 
@@ -333,12 +340,191 @@ class FileUploadHandler {
 
     // Start route aggregation process
     startAggregation() {
-        if (this.uploadedRoutes.length < 2) {
-            alert('Please upload at least 2 GPX files to aggregate routes.');
+        // Get selected routes for aggregation
+        const selectedRoutesToAggregate = this.uploadedRoutes.filter(route => 
+            this.selectedRoutes.has(route.id)
+        );
+
+        if (selectedRoutesToAggregate.length < 2) {
+            alert('Please select at least 2 routes to aggregate. Use the checkboxes in the route list to select routes.');
             return;
         }
 
-        alert(`🔗 Route Aggregation Coming Soon!\n\nYou have ${this.uploadedRoutes.length} routes ready to aggregate.\n\nNext features:\n• Choose aggregation method (distance/time/elevation)\n• Configure route ordering\n• Generate combined route visualization`);
+        console.log(`🔗 Aggregating ${selectedRoutesToAggregate.length} selected routes...`);
+
+        try {
+            // Create aggregated route
+            this.aggregatedRoute = this.createAggregatedRoute(selectedRoutesToAggregate);
+            
+            // Unselect all individual routes (but keep them in the list)
+            this.selectedRoutes.clear();
+            this.uploadedRoutes.forEach(route => {
+                this.hideRoute(route.id);
+            });
+
+            // Show only the aggregated route
+            this.isShowingAggregated = true;
+            this.showAggregatedRoute();
+
+            // Update UI
+            this.updateRouteList();
+            this.updateStatsDisplay();
+
+            console.log(`✅ Created aggregated route: ${this.aggregatedRoute.filename}`);
+            alert(`🔗 Route Aggregation Complete!\n\nCombined ${selectedRoutesToAggregate.length} routes into one continuous route.\nTotal distance: ${this.aggregatedRoute.distance.toFixed(1)}km\nTotal elevation gain: ${Math.round(this.aggregatedRoute.elevationGain)}m`);
+
+        } catch (error) {
+            console.error('❌ Failed to aggregate routes:', error);
+            alert('Failed to aggregate routes. Please check the console for details.');
+        }
+    }
+
+    // Create aggregated route from selected routes
+    createAggregatedRoute(routes) {
+        if (routes.length === 0) {
+            throw new Error('No routes provided for aggregation');
+        }
+
+        // Sort routes chronologically by timestamp or upload time
+        const sortedRoutes = [...routes].sort((a, b) => {
+            const timeA = this.extractRouteTimestamp(a);
+            const timeB = this.extractRouteTimestamp(b);
+            return timeA - timeB;
+        });
+
+        console.log('📅 Routes sorted chronologically:', sortedRoutes.map(r => ({
+            filename: r.filename,
+            timestamp: this.extractRouteTimestamp(r)
+        })));
+
+        // Initialize aggregated route data
+        let aggregatedPoints = [];
+        let totalDistance = 0;
+        let totalElevationGain = 0;
+        let totalElevationLoss = 0;
+        let totalDuration = 0;
+        let lastEndPoint = null;
+
+        // Process each route in chronological order
+        for (let i = 0; i < sortedRoutes.length; i++) {
+            const route = sortedRoutes[i];
+            const routePoints = [...route.points];
+
+            console.log(`🔧 Processing route ${i + 1}/${sortedRoutes.length}: ${route.filename} (${routePoints.length} points)`);
+
+            if (routePoints.length === 0) {
+                console.warn(`⚠️ Skipping route ${route.filename} - no points`);
+                continue;
+            }
+
+            // For routes after the first, calculate offset to connect to previous route's end
+            if (i > 0 && lastEndPoint && routePoints.length > 0) {
+                const currentStartPoint = routePoints[0];
+                const offsetLat = lastEndPoint.lat - currentStartPoint.lat;
+                const offsetLon = lastEndPoint.lon - currentStartPoint.lon;
+                const offsetElevation = (lastEndPoint.elevation || 0) - (currentStartPoint.elevation || 0);
+
+                console.log(`🔗 Applying offset to route ${i + 1}:`, {
+                    lat: offsetLat,
+                    lon: offsetLon,
+                    elevation: offsetElevation
+                });
+
+                // Apply offset to all points in this route
+                routePoints.forEach(point => {
+                    point.lat += offsetLat;
+                    point.lon += offsetLon;
+                    if (point.elevation !== undefined) {
+                        point.elevation += offsetElevation;
+                    }
+                });
+
+                console.log(`📍 Route ${i + 1} repositioned - start:`, routePoints[0], 'end:', routePoints[routePoints.length - 1]);
+            }
+
+            // Add this route's points to the aggregated route
+            // Skip the first point of subsequent routes to avoid duplication at connection points
+            const pointsToAdd = i === 0 ? routePoints : routePoints.slice(1);
+            aggregatedPoints.push(...pointsToAdd);
+
+            // Update totals
+            totalDistance += route.distance || 0;
+            totalElevationGain += route.elevationGain || 0;
+            totalElevationLoss += route.elevationLoss || 0;
+            totalDuration += route.duration || 0;
+
+            // Update last end point for next route
+            lastEndPoint = routePoints[routePoints.length - 1];
+        }
+
+        // Create the aggregated route object
+        const aggregatedRoute = {
+            id: this.generateRouteId(),
+            filename: `Aggregated Route (${sortedRoutes.length} routes)`,
+            points: aggregatedPoints,
+            distance: totalDistance,
+            elevationGain: totalElevationGain,
+            elevationLoss: totalElevationLoss,
+            duration: totalDuration,
+            uploadTime: Date.now(),
+            metadata: {
+                name: `Aggregated Route - ${sortedRoutes.map(r => r.filename).join(', ')}`,
+                description: `Combined from ${sortedRoutes.length} individual routes using chronological stitching`,
+                sourceRoutes: sortedRoutes.map(r => ({
+                    id: r.id,
+                    filename: r.filename,
+                    timestamp: this.extractRouteTimestamp(r)
+                }))
+            }
+        };
+
+        console.log(`✅ Aggregated route created:`, {
+            filename: aggregatedRoute.filename,
+            totalPoints: aggregatedRoute.points.length,
+            totalDistance: aggregatedRoute.distance.toFixed(1),
+            totalElevationGain: Math.round(aggregatedRoute.elevationGain),
+            sourceRoutes: aggregatedRoute.metadata.sourceRoutes.length
+        });
+
+        return aggregatedRoute;
+    }
+
+    // Extract timestamp from route for sorting
+    extractRouteTimestamp(route) {
+        // Try multiple sources for timestamp, prioritize earliest point time
+        let timestamp = null;
+        
+        // 1. Check first GPS point with timestamp
+        if (route.points && route.points.length > 0) {
+            for (const point of route.points) {
+                if (point.timestamp) {
+                    timestamp = new Date(point.timestamp);
+                    break;
+                }
+            }
+        }
+        
+        // 2. Check metadata time
+        if (!timestamp && route.metadata?.time) {
+            try {
+                timestamp = new Date(route.metadata.time);
+            } catch (e) {
+                console.warn(`Invalid metadata time for ${route.filename}:`, route.metadata.time);
+            }
+        }
+        
+        // 3. Fall back to upload time
+        if (!timestamp && route.uploadTime) {
+            timestamp = new Date(route.uploadTime);
+        }
+        
+        // 4. Use current time as last resort
+        if (!timestamp) {
+            timestamp = new Date();
+            console.warn(`No timestamp found for ${route.filename}, using current time`);
+        }
+        
+        return timestamp;
     }
 
     // Get uploaded routes
@@ -366,12 +552,28 @@ class FileUploadHandler {
 
         // Initialize the map
         if (this.mapViz.initializeMap(mapElement)) {
-            // Add all routes to the map
-            this.uploadedRoutes.forEach(route => {
-                this.mapViz.addRoute(route);
-            });
+            // Add only selected routes to the map (or all if none are specifically selected)
+            if (this.isShowingAggregated && this.aggregatedRoute) {
+                // Show aggregated route
+                this.mapViz.addRoute(this.aggregatedRoute);
+            } else {
+                // Show selected individual routes
+                this.uploadedRoutes.forEach(route => {
+                    if (this.selectedRoutes.has(route.id)) {
+                        this.mapViz.addRoute(route);
+                    }
+                });
+
+                // If no routes are selected, show all routes (for initial load)
+                if (this.selectedRoutes.size === 0 && this.uploadedRoutes.length > 0) {
+                    this.uploadedRoutes.forEach(route => {
+                        this.selectedRoutes.add(route.id);
+                        this.mapViz.addRoute(route);
+                    });
+                }
+            }
             
-            console.log('🗺️ Map visualization initialized with routes');
+            console.log('🗺️ Map visualization initialized with selected routes');
         }
     }
 
@@ -393,27 +595,30 @@ class FileUploadHandler {
         console.log('🔧 3D viewer initialization result:', initResult);
         
         if (initResult) {
-            // Add all routes to the 3D viewer
-            console.log(`🔄 Attempting to add ${this.uploadedRoutes.length} routes to 3D viewer...`);
-            this.uploadedRoutes.forEach((route, index) => {
-                console.log(`➕ Adding route ${index + 1} to 3D viewer:`, route.filename);
-                console.log(`📊 Route data structure:`, {
-                    filename: route.filename,
-                    pointsCount: route.points?.length || 'undefined',
-                    hasDistance: route.distance !== undefined,
-                    hasElevation: route.elevationGain !== undefined,
-                    samplePoint: route.points?.[0]
-                });
-                
-                if (!route.points || route.points.length === 0) {
-                    console.warn(`⚠️ Route ${route.filename} has no points data!`);
-                    return;
-                }
-                
-                this.viewer3D.addRoute(route);
-            });
+            // Add selected routes to the 3D viewer
+            console.log(`🔄 Attempting to add selected routes to 3D viewer...`);
             
-            console.log('🎮 3D visualization initialized with routes');
+            if (this.isShowingAggregated && this.aggregatedRoute) {
+                // Show aggregated route
+                console.log(`➕ Adding aggregated route to 3D viewer:`, this.aggregatedRoute.filename);
+                this.viewer3D.addRoute(this.aggregatedRoute);
+            } else {
+                // Show selected individual routes
+                this.uploadedRoutes.forEach((route, index) => {
+                    if (this.selectedRoutes.has(route.id)) {
+                        console.log(`➕ Adding selected route ${index + 1} to 3D viewer:`, route.filename);
+                        
+                        if (!route.points || route.points.length === 0) {
+                            console.warn(`⚠️ Route ${route.filename} has no points data!`);
+                            return;
+                        }
+                        
+                        this.viewer3D.addRoute(route);
+                    }
+                });
+            }
+            
+            console.log('🎮 3D visualization initialized with selected routes');
             
             // Setup resize handler
             this.setup3DResizeHandler();
@@ -440,8 +645,11 @@ class FileUploadHandler {
     // Add a route to 3D viewer if it's initialized (for newly uploaded routes)
     addRouteTo3DViewerIfInitialized(route) {
         if (this.is3DInitialized && this.viewer3D && this.viewer3D.isInitialized) {
-            console.log(`➕ Adding new route to initialized 3D viewer: ${route.filename}`);
-            this.viewer3D.addRoute(route);
+            // Only add if route is selected for display and we're not showing aggregated route
+            if (!this.isShowingAggregated && this.selectedRoutes.has(route.id)) {
+                console.log(`➕ Adding new selected route to initialized 3D viewer: ${route.filename}`);
+                this.viewer3D.addRoute(route);
+            }
         } else {
             console.log(`📝 3D viewer not initialized, route will be added when 3D view is accessed: ${route.filename}`);
         }
@@ -452,17 +660,58 @@ class FileUploadHandler {
         const routeListContainer = document.getElementById('route-list');
         if (!routeListContainer) return;
 
-        if (this.uploadedRoutes.length === 0) {
+        if (this.uploadedRoutes.length === 0 && !this.aggregatedRoute) {
             routeListContainer.innerHTML = '<p class="empty-state">No routes uploaded yet</p>';
             return;
         }
 
-        const routeItems = this.uploadedRoutes.map((route, index) => {
+        let routeItems = '';
+
+        // Show aggregated route if it exists and is being displayed
+        if (this.aggregatedRoute && this.isShowingAggregated) {
+            const color = '#ff6b35'; // Orange color for aggregated route
+            const duration = this.aggregatedRoute.duration ? this.formatDuration(this.aggregatedRoute.duration) : 'Unknown';
+            
+            routeItems += `
+                <div class="route-list-item aggregated-route" data-route-id="${this.aggregatedRoute.id}">
+                    <div class="route-item-checkbox">
+                        <input type="checkbox" id="route-checkbox-${this.aggregatedRoute.id}" 
+                               checked onchange="window.fileUploader.toggleRouteVisibility('${this.aggregatedRoute.id}')">
+                    </div>
+                    <div class="route-item-info">
+                        <h4>🔗 ${this.aggregatedRoute.filename}</h4>
+                        <div class="route-item-stats">
+                            <span>📏 ${this.aggregatedRoute.distance.toFixed(1)}km</span>
+                            <span>⛰️ ${Math.round(this.aggregatedRoute.elevationGain)}m</span>
+                            <span>⏱️ ${duration}</span>
+                        </div>
+                    </div>
+                    <div class="route-item-color" style="background-color: ${color}"></div>
+                    <div class="route-item-actions">
+                        <button class="route-action-btn" onclick="window.fileUploader.zoomToRoute('${this.aggregatedRoute.id}')" title="Zoom to Route">
+                            🔍
+                        </button>
+                        <button class="route-action-btn" onclick="window.fileUploader.removeAggregatedRoute()" title="Remove Aggregated Route">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Show individual routes (always show them, but may be unchecked)
+        routeItems += this.uploadedRoutes.map((route, index) => {
             const color = this.mapViz.routeLayers.find(layer => layer.id === route.id)?.color || '#2563eb';
             const duration = route.duration ? this.formatDuration(route.duration) : 'Unknown';
+            const isSelected = this.selectedRoutes.has(route.id);
             
             return `
-                <div class="route-list-item" data-route-id="${route.id}">
+                <div class="route-list-item ${isSelected ? 'selected' : 'unselected'}" data-route-id="${route.id}">
+                    <div class="route-item-checkbox">
+                        <input type="checkbox" id="route-checkbox-${route.id}" 
+                               ${isSelected ? 'checked' : ''} 
+                               onchange="window.fileUploader.toggleRouteVisibility('${route.id}')">
+                    </div>
                     <div class="route-item-info">
                         <h4>${route.filename}</h4>
                         <div class="route-item-stats">
@@ -540,8 +789,16 @@ class FileUploadHandler {
         // Remove from uploaded routes array
         this.uploadedRoutes = this.uploadedRoutes.filter(route => route.id !== routeId);
         
+        // Remove from selected routes
+        this.selectedRoutes.delete(routeId);
+        
         // Remove from map
         this.mapViz.removeRoute(routeId);
+        
+        // Remove from 3D viewer if initialized
+        if (this.is3DInitialized && this.viewer3D) {
+            this.viewer3D.removeRoute(routeId);
+        }
         
         // Update UI
         this.updateRouteList();
@@ -551,6 +808,114 @@ class FileUploadHandler {
         this.updateStatsDisplay();
         
         console.log(`🗑️ Route removed: ${routeId}`);
+    }
+
+    // Toggle route visibility
+    toggleRouteVisibility(routeId) {
+        const checkbox = document.getElementById(`route-checkbox-${routeId}`);
+        const isChecked = checkbox?.checked || false;
+
+        if (routeId === this.aggregatedRoute?.id) {
+            // Handle aggregated route visibility
+            if (isChecked) {
+                this.showAggregatedRoute();
+            } else {
+                this.hideAggregatedRoute();
+            }
+            return;
+        }
+
+        // Handle individual route visibility
+        if (isChecked) {
+            this.selectedRoutes.add(routeId);
+            this.showRoute(routeId);
+        } else {
+            this.selectedRoutes.delete(routeId);
+            this.hideRoute(routeId);
+        }
+
+        // Update route list styling
+        this.updateRouteList();
+        console.log(`👁️ Route ${routeId} visibility: ${isChecked ? 'shown' : 'hidden'}`);
+    }
+
+    // Show a specific route
+    showRoute(routeId) {
+        const route = this.uploadedRoutes.find(r => r.id === routeId);
+        if (!route) return;
+
+        // Add to map
+        this.mapViz.addRoute(route);
+
+        // Add to 3D viewer if initialized
+        if (this.is3DInitialized && this.viewer3D) {
+            this.viewer3D.addRoute(route);
+        }
+    }
+
+    // Hide a specific route
+    hideRoute(routeId) {
+        // Remove from map
+        this.mapViz.removeRoute(routeId);
+
+        // Remove from 3D viewer if initialized
+        if (this.is3DInitialized && this.viewer3D) {
+            this.viewer3D.removeRoute(routeId);
+        }
+    }
+
+    // Show aggregated route
+    showAggregatedRoute() {
+        if (!this.aggregatedRoute) return;
+
+        // Add to map
+        this.mapViz.addRoute(this.aggregatedRoute);
+
+        // Add to 3D viewer if initialized
+        if (this.is3DInitialized && this.viewer3D) {
+            this.viewer3D.addRoute(this.aggregatedRoute);
+        }
+    }
+
+    // Hide aggregated route
+    hideAggregatedRoute() {
+        if (!this.aggregatedRoute) return;
+
+        // Remove from map
+        this.mapViz.removeRoute(this.aggregatedRoute.id);
+
+        // Remove from 3D viewer if initialized
+        if (this.is3DInitialized && this.viewer3D) {
+            this.viewer3D.removeRoute(this.aggregatedRoute.id);
+        }
+    }
+
+    // Remove aggregated route completely
+    removeAggregatedRoute() {
+        if (!this.aggregatedRoute) return;
+
+        // Hide the aggregated route first
+        this.hideAggregatedRoute();
+        
+        // Remember which routes were used for aggregation
+        const sourceRouteIds = this.aggregatedRoute.metadata?.sourceRoutes?.map(r => r.id) || [];
+        
+        // Clear the aggregated route
+        this.aggregatedRoute = null;
+        this.isShowingAggregated = false;
+
+        // Restore selection for the routes that were used in aggregation
+        sourceRouteIds.forEach(routeId => {
+            const route = this.uploadedRoutes.find(r => r.id === routeId);
+            if (route) {
+                this.selectedRoutes.add(routeId);
+                this.showRoute(routeId);
+            }
+        });
+
+        // Update UI
+        this.updateRouteList();
+        console.log(`🗑️ Aggregated route removed, restored ${sourceRouteIds.length} individual routes`);
     }
 
     // Update just the stats display
