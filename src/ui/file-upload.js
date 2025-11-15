@@ -271,7 +271,7 @@ class FileUploadHandler {
                     <button class="btn btn-secondary" onclick="window.fileUploader.clearAllRoutes()">
                         �️ Clear All Routes
                     </button>
-                    <button class="btn btn-secondary" onclick="window.fileUploader.startAggregation()">
+                    <button class="btn btn-secondary" onclick="window.fileUploader.showAggregationOptions()">
                         🔗 Aggregate Routes
                     </button>
                 </div>
@@ -333,9 +333,8 @@ class FileUploadHandler {
         alert(`📋 Uploaded Routes (${this.uploadedRoutes.length}):\n\n${routeList}`);
     }
 
-    // Start route aggregation process
-    startAggregation() {
-        // Get selected routes for aggregation
+    // Show aggregation options dialog
+    showAggregationOptions() {
         const selectedRoutesToAggregate = this.uploadedRoutes.filter(route => 
             this.selectedRoutes.has(route.id)
         );
@@ -345,11 +344,99 @@ class FileUploadHandler {
             return;
         }
 
-        console.log(`🔗 Aggregating ${selectedRoutesToAggregate.length} selected routes...`);
+        // Create modal for aggregation options
+        this.showAggregationModal(selectedRoutesToAggregate);
+    }
+
+    // Show aggregation modal with options
+    showAggregationModal(routes) {
+        const modal = document.createElement('div');
+        modal.className = 'aggregation-modal-overlay';
+        modal.innerHTML = `
+            <div class="aggregation-modal">
+                <div class="aggregation-modal-header">
+                    <h3>🔗 Aggregate ${routes.length} Routes</h3>
+                    <button class="modal-close" onclick="this.closest('.aggregation-modal-overlay').remove()">×</button>
+                </div>
+                
+                <div class="aggregation-modal-content">
+                    <div class="aggregation-option-group">
+                        <h4>Aggregation Mode</h4>
+                        <div class="aggregation-options">
+                            <label class="aggregation-option">
+                                <input type="radio" name="aggregation-mode" value="distance" checked>
+                                <div class="option-content">
+                                    <strong>📏 Distance Mode</strong>
+                                    <p>Append routes end-to-end over distance (current behavior)</p>
+                                </div>
+                            </label>
+                            
+                            <label class="aggregation-option">
+                                <input type="radio" name="aggregation-mode" value="time">
+                                <div class="option-content">
+                                    <strong>⏰ Time Mode</strong>
+                                    <p>Plot elevation over time with automatic time step selection</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="aggregation-option-group">
+                        <h4>Elevation Display</h4>
+                        <div class="aggregation-options">
+                            <label class="aggregation-option">
+                                <input type="radio" name="elevation-mode" value="actual" checked>
+                                <div class="option-content">
+                                    <strong>⛰️ Actual Elevation</strong>
+                                    <p>Show raw elevation values</p>
+                                </div>
+                            </label>
+                            
+                            <label class="aggregation-option">
+                                <input type="radio" name="elevation-mode" value="cumulative">
+                                <div class="option-content">
+                                    <strong>📈 Cumulative Climbing</strong>
+                                    <p>Show cumulative elevation gain (preserves total climbing)</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="aggregation-modal-actions">
+                    <button class="btn btn-secondary" onclick="this.closest('.aggregation-modal-overlay').remove()">
+                        Cancel
+                    </button>
+                    <button class="btn btn-primary" onclick="window.fileUploader.executeAggregation()">
+                        Create Aggregated Route
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        
+        // Store routes for aggregation
+        this._routesToAggregate = routes;
+    }
+
+    // Execute aggregation with selected options
+    executeAggregation() {
+        const modal = document.querySelector('.aggregation-modal-overlay');
+        const aggregationMode = modal.querySelector('input[name="aggregation-mode"]:checked').value;
+        const elevationMode = modal.querySelector('input[name="elevation-mode"]:checked').value;
+        
+        modal.remove();
+        
+        console.log(`🔗 Aggregating ${this._routesToAggregate.length} routes in ${aggregationMode} mode with ${elevationMode} elevation...`);
 
         try {
-            // Create aggregated route
-            this.aggregatedRoute = this.createAggregatedRoute(selectedRoutesToAggregate);
+            // Create aggregated route based on selected options
+            this.aggregatedRoute = this.createAggregatedRouteWithOptions(
+                this._routesToAggregate, 
+                aggregationMode, 
+                elevationMode
+            );
             
             // Unselect all individual routes (but keep them in the list)
             this.selectedRoutes.clear();
@@ -366,12 +453,434 @@ class FileUploadHandler {
             this.updateStatsDisplay();
 
             console.log(`✅ Created aggregated route: ${this.aggregatedRoute.filename}`);
-            alert(`🔗 Route Aggregation Complete!\n\nCombined ${selectedRoutesToAggregate.length} routes into one continuous route.\nTotal distance: ${this.aggregatedRoute.distance.toFixed(1)}km\nTotal elevation gain: ${Math.round(this.aggregatedRoute.elevationGain)}m`);
+            const modeDescription = aggregationMode === 'distance' ? 'distance-based' : 'time-based';
+            const elevationDescription = elevationMode === 'actual' ? 'actual elevation' : 'cumulative climbing';
+            
+            alert(`🔗 Route Aggregation Complete!\n\nCombined ${this._routesToAggregate.length} routes using ${modeDescription} aggregation with ${elevationDescription}.\nTotal distance: ${this.aggregatedRoute.distance.toFixed(1)}km\nTotal elevation gain: ${Math.round(this.aggregatedRoute.elevationGain)}m`);
 
         } catch (error) {
             console.error('❌ Failed to aggregate routes:', error);
             alert('Failed to aggregate routes. Please check the console for details.');
         }
+        
+        // Clean up
+        delete this._routesToAggregate;
+    }
+
+    // Create aggregated route with different options
+    createAggregatedRouteWithOptions(routes, aggregationMode, elevationMode) {
+        if (routes.length === 0) {
+            throw new Error('No routes provided for aggregation');
+        }
+
+        // Sort routes chronologically by timestamp
+        const sortedRoutes = [...routes].sort((a, b) => {
+            const timeA = this.extractRouteTimestamp(a);
+            const timeB = this.extractRouteTimestamp(b);
+            return timeA - timeB;
+        });
+
+        console.log('📅 Routes sorted chronologically:', sortedRoutes.map(r => ({
+            filename: r.filename,
+            timestamp: this.extractRouteTimestamp(r)
+        })));
+
+        let aggregatedRoute;
+
+        if (aggregationMode === 'distance') {
+            aggregatedRoute = this.createDistanceBasedAggregation(sortedRoutes, elevationMode);
+        } else if (aggregationMode === 'time') {
+            aggregatedRoute = this.createTimeBasedAggregation(sortedRoutes, elevationMode);
+        } else {
+            throw new Error(`Unknown aggregation mode: ${aggregationMode}`);
+        }
+
+        return aggregatedRoute;
+    }
+
+    // Create distance-based aggregation (existing logic with elevation mode support)
+    createDistanceBasedAggregation(routes, elevationMode) {
+        // Initialize aggregated route data
+        let aggregatedPoints = [];
+        let totalDistance = 0;
+        let totalElevationGain = 0;
+        let totalElevationLoss = 0;
+        let totalDuration = 0;
+        let lastEndPoint = null;
+        let cumulativeClimbing = 0;
+
+        // Process each route in chronological order
+        for (let i = 0; i < routes.length; i++) {
+            const route = routes[i];
+            // Clone the route points to avoid modifying the original data
+            const routePoints = route.points.map(point => ({
+                ...point,
+                lat: point.lat,
+                lon: point.lon,
+                elevation: point.elevation,
+                timestamp: point.timestamp
+            }));
+
+            console.log(`🔧 Processing route ${i + 1}/${routes.length}: ${route.filename} (${routePoints.length} points)`);
+
+            if (routePoints.length === 0) {
+                console.warn(`⚠️ Skipping route ${route.filename} - no points`);
+                continue;
+            }
+
+            // For routes after the first, calculate offset to connect to previous route's end
+            if (i > 0 && lastEndPoint && routePoints.length > 0) {
+                const currentStartPoint = routePoints[0];
+                const offsetLat = lastEndPoint.lat - currentStartPoint.lat;
+                const offsetLon = lastEndPoint.lon - currentStartPoint.lon;
+                
+                let offsetElevation = 0;
+                if (elevationMode === 'actual') {
+                    offsetElevation = (lastEndPoint.elevation || 0) - (currentStartPoint.elevation || 0);
+                }
+                // For cumulative mode, we don't offset elevation - we continue from cumulative climbing
+
+                console.log(`🔗 Applying offset to route ${i + 1}:`, {
+                    lat: offsetLat,
+                    lon: offsetLon,
+                    elevation: offsetElevation
+                });
+
+                // Apply offset to all points in this cloned route
+                routePoints.forEach(point => {
+                    point.lat += offsetLat;
+                    point.lon += offsetLon;
+                    if (elevationMode === 'actual' && point.elevation !== undefined) {
+                        point.elevation += offsetElevation;
+                    }
+                });
+            }
+
+            // Process elevation based on mode
+            if (elevationMode === 'cumulative') {
+                // Calculate cumulative climbing for this route
+                let routeClimbing = 0;
+                let lastElevation = routePoints[0]?.elevation || 0;
+                
+                routePoints.forEach((point, idx) => {
+                    if (point.elevation !== undefined) {
+                        if (idx > 0 && point.elevation > lastElevation) {
+                            routeClimbing += (point.elevation - lastElevation);
+                        }
+                        lastElevation = point.elevation;
+                        
+                        // Set elevation to cumulative climbing
+                        point.elevation = cumulativeClimbing + routeClimbing;
+                    }
+                });
+                
+                // Ensure we account for the full route's elevation gain
+                const routeTotalGain = route.elevationGain || 0;
+                if (routeClimbing < routeTotalGain) {
+                    // Adjust the last point to ensure total gain is preserved
+                    const adjustment = routeTotalGain - routeClimbing;
+                    if (routePoints.length > 0 && routePoints[routePoints.length - 1].elevation !== undefined) {
+                        routePoints[routePoints.length - 1].elevation += adjustment;
+                    }
+                }
+                
+                cumulativeClimbing += routeTotalGain;
+                console.log(`📈 Route ${i + 1} cumulative climbing: ${routeClimbing.toFixed(1)}m, total: ${cumulativeClimbing.toFixed(1)}m`);
+            }
+
+            // Add this route's points to the aggregated route
+            // Skip the first point of subsequent routes to avoid duplication at connection points
+            const pointsToAdd = i === 0 ? routePoints : routePoints.slice(1);
+            aggregatedPoints.push(...pointsToAdd);
+
+            // Update totals
+            totalDistance += route.distance || 0;
+            totalElevationGain += route.elevationGain || 0;
+            totalElevationLoss += route.elevationLoss || 0;
+            totalDuration += route.duration || 0;
+
+            // Update last end point for next route
+            lastEndPoint = routePoints[routePoints.length - 1];
+        }
+
+        // Create the aggregated route object
+        const aggregatedRoute = {
+            id: this.generateRouteId(),
+            filename: `Aggregated Route (${routes.length} routes) - ${elevationMode === 'actual' ? 'Distance' : 'Cumulative Climbing'}`,
+            points: aggregatedPoints,
+            distance: totalDistance,
+            elevationGain: totalElevationGain,
+            elevationLoss: totalElevationLoss,
+            duration: totalDuration,
+            uploadTime: Date.now(),
+            metadata: {
+                name: `Aggregated Route - ${routes.map(r => r.filename).join(', ')}`,
+                description: `Combined from ${routes.length} individual routes using distance-based ${elevationMode} aggregation`,
+                aggregationMode: 'distance',
+                elevationMode: elevationMode,
+                sourceRoutes: routes.map(r => ({
+                    id: r.id,
+                    filename: r.filename,
+                    timestamp: this.extractRouteTimestamp(r)
+                }))
+            }
+        };
+
+        console.log(`✅ Distance-based aggregated route created:`, {
+            filename: aggregatedRoute.filename,
+            totalPoints: aggregatedRoute.points.length,
+            totalDistance: aggregatedRoute.distance.toFixed(1),
+            totalElevationGain: Math.round(aggregatedRoute.elevationGain),
+            sourceRoutes: aggregatedRoute.metadata.sourceRoutes.length
+        });
+
+        return aggregatedRoute;
+    }
+
+    // Create time-based aggregation
+    createTimeBasedAggregation(routes, elevationMode) {
+        console.log(`⏰ Creating time-based aggregation with ${elevationMode} elevation...`);
+        
+        // First, relocate all routes spatially (same as distance-based aggregation)
+        let spatiallyRelocatedRoutes = [];
+        let lastEndPoint = null;
+        
+        console.log('🔧 Step 1: Spatial relocation of routes...');
+        
+        for (let i = 0; i < routes.length; i++) {
+            const route = routes[i];
+            // Clone the route points to avoid modifying the original data
+            const routePoints = route.points.map(point => ({
+                ...point,
+                lat: point.lat,
+                lon: point.lon,
+                elevation: point.elevation,
+                timestamp: point.timestamp
+            }));
+
+            console.log(`🔧 Processing route ${i + 1}/${routes.length}: ${route.filename} (${routePoints.length} points)`);
+
+            if (routePoints.length === 0) {
+                console.warn(`⚠️ Skipping route ${route.filename} - no points`);
+                continue;
+            }
+
+            // For routes after the first, calculate offset to connect to previous route's end
+            if (i > 0 && lastEndPoint && routePoints.length > 0) {
+                const currentStartPoint = routePoints[0];
+                const offsetLat = lastEndPoint.lat - currentStartPoint.lat;
+                const offsetLon = lastEndPoint.lon - currentStartPoint.lon;
+                const offsetElevation = (lastEndPoint.elevation || 0) - (currentStartPoint.elevation || 0);
+
+                console.log(`🔗 Applying spatial offset to route ${i + 1}:`, {
+                    lat: offsetLat,
+                    lon: offsetLon,
+                    elevation: offsetElevation
+                });
+
+                // Apply offset to all points in this cloned route
+                routePoints.forEach(point => {
+                    point.lat += offsetLat;
+                    point.lon += offsetLon;
+                    if (point.elevation !== undefined) {
+                        point.elevation += offsetElevation;
+                    }
+                });
+
+                console.log(`📍 Route ${i + 1} spatially relocated - start:`, routePoints[0], 'end:', routePoints[routePoints.length - 1]);
+            }
+
+            spatiallyRelocatedRoutes.push({
+                ...route,
+                points: routePoints
+            });
+
+            // Update last end point for next route
+            lastEndPoint = routePoints[routePoints.length - 1];
+        }
+
+        console.log('✅ Step 1 complete: All routes spatially relocated');
+        console.log('🕒 Step 2: Time-domain transformation...');
+
+        // Now collect all spatially-relocated points with timestamps
+        let allPointsWithTime = [];
+        let totalDistance = 0;
+        let totalElevationGain = 0;
+        let totalElevationLoss = 0;
+        let totalDuration = 0;
+
+        spatiallyRelocatedRoutes.forEach((route, routeIndex) => {
+            console.log(`📊 Processing relocated route ${routeIndex + 1}: ${route.filename}`);
+            
+            const routePoints = route.points.filter(point => point.timestamp);
+            if (routePoints.length === 0) {
+                console.warn(`⚠️ Route ${route.filename} has no timestamped points, skipping from time aggregation`);
+                return;
+            }
+
+            routePoints.forEach(point => {
+                allPointsWithTime.push({
+                    ...point,
+                    routeId: route.id,
+                    routeIndex: routeIndex,
+                    timestamp: new Date(point.timestamp)
+                });
+            });
+
+            totalDistance += route.distance || 0;
+            totalElevationGain += route.elevationGain || 0;
+            totalElevationLoss += route.elevationLoss || 0;
+            totalDuration += route.duration || 0;
+        });
+
+        if (allPointsWithTime.length === 0) {
+            throw new Error('No timestamped points found in selected routes');
+        }
+
+        // Sort all points by timestamp
+        allPointsWithTime.sort((a, b) => a.timestamp - b.timestamp);
+
+        const startTime = allPointsWithTime[0].timestamp;
+        const endTime = allPointsWithTime[allPointsWithTime.length - 1].timestamp;
+        const totalTimespan = endTime - startTime; // in milliseconds
+
+        console.log(`📅 Time range: ${startTime.toISOString()} to ${endTime.toISOString()}`);
+        console.log(`⏱️ Total timespan: ${Math.round(totalTimespan / 1000 / 60)} minutes`);
+
+        // Determine time step based on total timespan
+        let timeStepMs;
+        let stepLabel;
+        
+        if (totalTimespan < 2 * 60 * 60 * 1000) { // Less than 2 hours
+            timeStepMs = 60 * 1000; // 1 minute
+            stepLabel = 'minute';
+        } else if (totalTimespan < 48 * 60 * 60 * 1000) { // Less than 48 hours
+            timeStepMs = 60 * 60 * 1000; // 1 hour
+            stepLabel = 'hour';
+        } else {
+            timeStepMs = 24 * 60 * 60 * 1000; // 1 day
+            stepLabel = 'day';
+        }
+
+        console.log(`⏰ Using ${stepLabel} time steps (${timeStepMs / 1000}s intervals)`);
+
+        // Create time-based aggregated points
+        const aggregatedPoints = [];
+        let cumulativeClimbing = 0;
+        let lastElevationByRoute = new Map(); // Track last elevation for each route for cumulative mode
+
+        for (let currentTime = startTime; currentTime <= endTime; currentTime = new Date(currentTime.getTime() + timeStepMs)) {
+            const nextTime = new Date(currentTime.getTime() + timeStepMs);
+            
+            // Find points within this time step
+            const pointsInStep = allPointsWithTime.filter(point => 
+                point.timestamp >= currentTime && point.timestamp < nextTime
+            );
+
+            if (pointsInStep.length === 0) continue;
+
+            // Calculate max elevation and other stats for this time step
+            let maxElevation = Math.max(...pointsInStep.map(p => p.elevation || 0));
+            let avgLat = pointsInStep.reduce((sum, p) => sum + p.lat, 0) / pointsInStep.length;
+            let avgLon = pointsInStep.reduce((sum, p) => sum + p.lon, 0) / pointsInStep.length;
+
+            if (elevationMode === 'cumulative') {
+                // Calculate climbing within this time step for each route
+                let stepClimbing = 0;
+                
+                // Group points by route to calculate climbing per route
+                const pointsByRoute = new Map();
+                pointsInStep.forEach(point => {
+                    if (!pointsByRoute.has(point.routeId)) {
+                        pointsByRoute.set(point.routeId, []);
+                    }
+                    pointsByRoute.get(point.routeId).push(point);
+                });
+
+                pointsByRoute.forEach((routePoints, routeId) => {
+                    routePoints.sort((a, b) => a.timestamp - b.timestamp);
+                    
+                    const lastElevation = lastElevationByRoute.get(routeId) || routePoints[0].elevation;
+                    let routeStepClimbing = 0;
+                    let currentElevation = lastElevation;
+
+                    routePoints.forEach(point => {
+                        if (point.elevation > currentElevation) {
+                            routeStepClimbing += (point.elevation - currentElevation);
+                        }
+                        currentElevation = point.elevation;
+                    });
+
+                    stepClimbing += routeStepClimbing;
+                    lastElevationByRoute.set(routeId, currentElevation);
+                });
+
+                cumulativeClimbing += stepClimbing;
+                maxElevation = cumulativeClimbing;
+                
+                console.log(`📈 Time step ${currentTime.toISOString()}: +${stepClimbing.toFixed(1)}m climbing, total: ${cumulativeClimbing.toFixed(1)}m`);
+            }
+
+            aggregatedPoints.push({
+                lat: avgLat,
+                lon: avgLon,
+                elevation: maxElevation,
+                timestamp: currentTime.toISOString(),
+                timeStep: stepLabel,
+                pointCount: pointsInStep.length
+            });
+        }
+
+        // Ensure total elevation gain is preserved for cumulative mode
+        if (elevationMode === 'cumulative' && cumulativeClimbing < totalElevationGain) {
+            const adjustment = totalElevationGain - cumulativeClimbing;
+            if (aggregatedPoints.length > 0) {
+                aggregatedPoints[aggregatedPoints.length - 1].elevation += adjustment;
+                console.log(`📊 Applied final elevation adjustment: +${adjustment.toFixed(1)}m to preserve total gain`);
+            }
+        }
+
+        // Create the aggregated route object
+        const aggregatedRoute = {
+            id: this.generateRouteId(),
+            filename: `Aggregated Route (${routes.length} routes) - ${elevationMode === 'actual' ? 'Time-based' : 'Time-based Cumulative'}`,
+            points: aggregatedPoints,
+            distance: totalDistance,
+            elevationGain: totalElevationGain,
+            elevationLoss: totalElevationLoss,
+            duration: totalDuration,
+            uploadTime: Date.now(),
+            metadata: {
+                name: `Time-based Aggregated Route - ${routes.map(r => r.filename).join(', ')}`,
+                description: `Spatially connected and time-aggregated from ${routes.length} routes using ${stepLabel} intervals with ${elevationMode} elevation`,
+                aggregationMode: 'time',
+                elevationMode: elevationMode,
+                timeStep: stepLabel,
+                timeStepMs: timeStepMs,
+                sourceRoutes: routes.map(r => ({
+                    id: r.id,
+                    filename: r.filename,
+                    timestamp: this.extractRouteTimestamp(r)
+                }))
+            }
+        };
+
+        console.log(`✅ Time-based aggregated route created:`, {
+            filename: aggregatedRoute.filename,
+            totalPoints: aggregatedRoute.points.length,
+            timeStep: stepLabel,
+            spatiallyConnected: true,
+            totalDistance: aggregatedRoute.distance.toFixed(1),
+            totalElevationGain: Math.round(aggregatedRoute.elevationGain),
+            sourceRoutes: aggregatedRoute.metadata.sourceRoutes.length
+        });
+
+        return aggregatedRoute;
+    }
+
+    // Start route aggregation process (legacy method - now redirects to new modal)
+    startAggregation() {
+        this.showAggregationOptions();
     }
 
     // Create aggregated route from selected routes
