@@ -160,7 +160,7 @@ class GPXParser {
 
         // Time
         const timeElement = xmlDoc.querySelector('metadata > time, trk > time');
-        if (timeElement) metadata.time = new Date(timeElement.textContent);
+        if (timeElement) metadata.time = timeElement.textContent; // Keep as string instead of Date object
 
         return metadata;
     }

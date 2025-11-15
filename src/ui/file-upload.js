@@ -9,9 +9,10 @@ class FileUploadHandler {
         this.mapViz = new RouteMapVisualization();
         this.viewer3D = new Route3DVisualization();
         this.uploadedRoutes = [];
-        this.maxFiles = 20; // Maximum number of files to keep in memory
+        this.maxFiles = 10; // Reduced from 20 to help with storage limits
         this.selectedRoutes = new Set(); // For tracking selected routes
         this.currentViewMode = 'map'; // 'map' or '3d'
+        this.is3DInitialized = false; // Track if 3D viewer has been initialized
         this.init();
     }
 
@@ -127,6 +128,8 @@ class FileUploadHandler {
 
         // Update UI with results
         this.updateUIAfterUpload(results);
+        
+        console.log(`🔄 About to save ${this.uploadedRoutes.length} routes to storage...`);
         this.saveRoutesToStorage();
     }
 
@@ -140,8 +143,11 @@ class FileUploadHandler {
         // Add unique ID
         routeData.id = this.generateRouteId();
         this.uploadedRoutes.push(routeData);
+
+        console.log(`✅ Added route: ${routeData.filename}`);
         
-        console.log(`✅ Route added: ${routeData.filename} (${routeData.pointCount} points)`);
+        // Add to 3D viewer if it's already initialized
+        this.addRouteTo3DViewerIfInitialized(routeData);
     }
 
     // Generate unique route ID
@@ -277,11 +283,8 @@ class FileUploadHandler {
         // Initialize map and add routes
         this.initializeMapVisualization();
         
-        // Initialize 3D viewer if in 3D mode
-        if (this.currentViewMode === '3d') {
-            // Small delay to ensure DOM is ready
-            setTimeout(() => this.initialize3DVisualization(), 100);
-        }
+        // Don't initialize 3D viewer until user switches to 3D view
+        // this will be done lazily in show3DView()
         
         this.updateRouteList();
 
@@ -391,8 +394,22 @@ class FileUploadHandler {
         
         if (initResult) {
             // Add all routes to the 3D viewer
-            this.uploadedRoutes.forEach(route => {
-                console.log('➕ Adding route to 3D viewer:', route.filename);
+            console.log(`🔄 Attempting to add ${this.uploadedRoutes.length} routes to 3D viewer...`);
+            this.uploadedRoutes.forEach((route, index) => {
+                console.log(`➕ Adding route ${index + 1} to 3D viewer:`, route.filename);
+                console.log(`📊 Route data structure:`, {
+                    filename: route.filename,
+                    pointsCount: route.points?.length || 'undefined',
+                    hasDistance: route.distance !== undefined,
+                    hasElevation: route.elevationGain !== undefined,
+                    samplePoint: route.points?.[0]
+                });
+                
+                if (!route.points || route.points.length === 0) {
+                    console.warn(`⚠️ Route ${route.filename} has no points data!`);
+                    return;
+                }
+                
                 this.viewer3D.addRoute(route);
             });
             
@@ -417,6 +434,16 @@ class FileUploadHandler {
         const viewer3DContainer = document.getElementById('viewer-3d-container');
         if (viewer3DContainer) {
             resizeObserver.observe(viewer3DContainer);
+        }
+    }
+
+    // Add a route to 3D viewer if it's initialized (for newly uploaded routes)
+    addRouteTo3DViewerIfInitialized(route) {
+        if (this.is3DInitialized && this.viewer3D && this.viewer3D.isInitialized) {
+            console.log(`➕ Adding new route to initialized 3D viewer: ${route.filename}`);
+            this.viewer3D.addRoute(route);
+        } else {
+            console.log(`📝 3D viewer not initialized, route will be added when 3D view is accessed: ${route.filename}`);
         }
     }
 
@@ -544,31 +571,129 @@ class FileUploadHandler {
     // Save routes to local storage
     saveRoutesToStorage() {
         try {
+            // Create compressed version of route data for storage
+            const compressedRoutes = this.uploadedRoutes.map(route => ({
+                id: route.id,
+                filename: route.filename,
+                // Downsample points to reduce storage size
+                points: this.downsamplePoints(route.points, 100), // Max 100 points per route
+                distance: route.distance,
+                elevationGain: route.elevationGain,
+                elevationLoss: route.elevationLoss,
+                duration: route.duration,
+                uploadTime: route.uploadTime,
+                // Store only essential metadata
+                metadata: {
+                    name: route.metadata?.name,
+                    description: route.metadata?.description
+                }
+            }));
+            
             const routeData = {
-                routes: this.uploadedRoutes,
+                routes: compressedRoutes,
                 timestamp: Date.now()
             };
+            
+            // Test JSON serialization and check size
+            const jsonString = JSON.stringify(routeData);
+            const sizeKB = Math.round(jsonString.length / 1024);
+            
+            if (sizeKB > 4000) { // If larger than 4MB, remove oldest routes
+                console.warn(`⚠️ Data too large (${sizeKB}KB), removing oldest routes...`);
+                while (compressedRoutes.length > 0 && JSON.stringify({routes: compressedRoutes, timestamp: Date.now()}).length > 4000 * 1024) {
+                    compressedRoutes.shift();
+                }
+                routeData.routes = compressedRoutes;
+            }
+            
             localStorage.setItem('routecoinme_gpx_routes', JSON.stringify(routeData));
+            console.log(`💾 Saved ${compressedRoutes.length} routes to local storage (${Math.round(JSON.stringify(routeData).length / 1024)}KB)`);
+            
         } catch (error) {
-            console.warn('Failed to save routes to local storage:', error);
+            if (error.name === 'QuotaExceededError') {
+                console.warn('📦 Storage quota exceeded, clearing old data and retrying...');
+                this.clearOldStorageData();
+                this.saveRoutesToStorage(); // Retry once
+            } else {
+                console.warn('Failed to save routes to local storage:', error);
+            }
+        }
+    }
+
+    // Downsample GPS points to reduce storage size
+    downsamplePoints(points, maxPoints = 100) {
+        if (!points || points.length <= maxPoints) {
+            return points;
+        }
+        
+        const step = Math.ceil(points.length / maxPoints);
+        const downsampled = [];
+        
+        // Always keep first and last point
+        downsampled.push(points[0]);
+        
+        // Sample points at regular intervals
+        for (let i = step; i < points.length - 1; i += step) {
+            downsampled.push(points[i]);
+        }
+        
+        // Always keep last point
+        if (points.length > 1) {
+            downsampled.push(points[points.length - 1]);
+        }
+        
+        console.log(`📉 Downsampled route: ${points.length} → ${downsampled.length} points`);
+        return downsampled;
+    }
+
+    // Clear old storage data to make space
+    clearOldStorageData() {
+        try {
+            // Remove any other app data that might be taking space
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('routecoinme_') && key !== 'routecoinme_gpx_routes') {
+                    localStorage.removeItem(key);
+                }
+            }
+            
+            // Clear our main storage
+            localStorage.removeItem('routecoinme_gpx_routes');
+            console.log('🧹 Cleared old storage data');
+        } catch (error) {
+            console.warn('Failed to clear storage:', error);
         }
     }
 
     // Load routes from local storage
     loadStoredRoutes() {
         try {
+            // Test localStorage availability
+            localStorage.setItem('test', 'test');
+            localStorage.removeItem('test');
+            console.log('✅ LocalStorage is available');
+            
             const stored = localStorage.getItem('routecoinme_gpx_routes');
+            console.log('🔍 Checking local storage for saved routes...');
+            console.log('📦 Raw storage data:', stored ? stored.substring(0, 100) + '...' : 'null');
+            
             if (stored) {
                 const data = JSON.parse(stored);
                 this.uploadedRoutes = data.routes || [];
                 
                 if (this.uploadedRoutes.length > 0) {
                     console.log(`📂 Loaded ${this.uploadedRoutes.length} routes from storage`);
+                    console.log('📋 Routes loaded:', this.uploadedRoutes.map(r => r.filename));
+                    console.log('🔄 Calling updateUIAfterUpload to initialize viewers...');
                     this.updateUIAfterUpload({ successful: this.uploadedRoutes, failed: [] });
+                } else {
+                    console.log('📭 No routes found in storage');
                 }
+            } else {
+                console.log('📭 No saved data found in local storage');
             }
         } catch (error) {
-            console.warn('Failed to load stored routes:', error);
+            console.warn('❌ LocalStorage issue:', error);
             this.uploadedRoutes = [];
         }
     }
@@ -622,13 +747,22 @@ class FileUploadHandler {
             mapBtn?.classList.remove('active');
             viewer3DBtn?.classList.add('active');
 
-            // Resize 3D viewer after showing
-            setTimeout(() => {
-                if (this.viewer3D) {
-                    const rect = viewer3DContainer.getBoundingClientRect();
-                    this.viewer3D.resize(rect.width, rect.height);
-                }
-            }, 100);
+            // Initialize 3D viewer if not already done (lazy initialization)
+            if (!this.is3DInitialized) {
+                console.log('🚀 Lazy initializing 3D viewer...');
+                setTimeout(() => {
+                    this.initialize3DVisualization();
+                    this.is3DInitialized = true;
+                }, 100);
+            } else {
+                // Resize 3D viewer after showing if already initialized
+                setTimeout(() => {
+                    if (this.viewer3D) {
+                        const rect = viewer3DContainer.getBoundingClientRect();
+                        this.viewer3D.resize(rect.width, rect.height);
+                    }
+                }, 100);
+            }
         }
 
         console.log('🎮 Switched to 3D view');
