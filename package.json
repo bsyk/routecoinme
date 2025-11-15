@@ -1,0 +1,22 @@
+{
+  "name": "routecoinme",
+  "version": "1.0.0",
+  "description": "GPS route aggregation and 3D visualization web application",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  },
+  "dependencies": {
+    "d3": "^7.8.5",
+    "three": "^0.158.0"
+  },
+  "keywords": ["gps", "gpx", "strava", "3d", "visualization", "cycling"],
+  "author": "bsyk",
+  "license": "MIT"
+}
