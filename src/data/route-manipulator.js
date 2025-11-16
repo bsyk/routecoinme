@@ -200,74 +200,130 @@ class RouteManipulator {
     }
 
     // 6. Convert a route to time-domain by aggregating points along a time-series
-    convertToTimeDomain(route, timeStepMs = null) {
+    convertToTimeDomain(route, beginTime, endTime, stepSizeMs) {
         if (!route.points || route.points.length === 0) {
             throw new Error('Route must have points to convert to time domain');
         }
 
+        if (!beginTime || !endTime || !stepSizeMs) {
+            throw new Error('beginTime, endTime, and stepSizeMs are all required parameters');
+        }
+
         console.log(`⏰ Converting route to time domain: ${route.filename || 'Unnamed'}`);
         
-        // Filter points that have timestamps
-        const timestampedPoints = route.points.filter(point => point.timestamp);
+        // Convert to Date objects if they're not already
+        const startTime = new Date(beginTime);
+        const endTime = new Date(endTime);
+        
+        if (startTime >= endTime) {
+            throw new Error('beginTime must be before endTime');
+        }
+        
+        const totalTimespan = endTime - startTime;
+        const stepLabel = stepSizeMs >= 24 * 60 * 60 * 1000 ? 'day' :
+                         stepSizeMs >= 60 * 60 * 1000 ? 'hour' : 'minute';
+        
+        console.log(`📅 Time range: ${startTime.toISOString()} to ${endTime.toISOString()}`);
+        console.log(`⏱️ Total timespan: ${Math.round(totalTimespan / 1000 / 60)} minutes`);
+        console.log(`⏰ Using ${stepLabel} time steps (${stepSizeMs / 1000}s intervals)`);
+        
+        // Filter and sort points that have timestamps
+        const timestampedPoints = route.points
+            .filter(point => point.timestamp)
+            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         
         if (timestampedPoints.length === 0) {
             throw new Error('Route must have timestamped points for time domain conversion');
         }
 
-        // Sort by timestamp
-        timestampedPoints.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-        
-        const startTime = new Date(timestampedPoints[0].timestamp);
-        const endTime = new Date(timestampedPoints[timestampedPoints.length - 1].timestamp);
-        const totalTimespan = endTime - startTime; // milliseconds
-        
-        console.log(`📅 Time range: ${startTime.toISOString()} to ${endTime.toISOString()}`);
-        console.log(`⏱️ Total timespan: ${Math.round(totalTimespan / 1000 / 60)} minutes`);
-        
-        // Auto-select time step if not provided
-        if (!timeStepMs) {
-            if (totalTimespan < 24 * 60 * 60 * 1000) { // Less than 24 hours
-                timeStepMs = 60 * 1000; // 1 minute
-            } else if (totalTimespan < 28 * 24 * 60 * 60 * 1000) { // Less than 28 days
-                timeStepMs = 60 * 60 * 1000; // 1 hour
-            } else {
-                timeStepMs = 24 * 60 * 60 * 1000; // 1 day
-            }
-        }
-        
-        const stepLabel = timeStepMs === 60 * 1000 ? 'minute' : 
-                         timeStepMs === 60 * 60 * 1000 ? 'hour' : 'day';
-        
-        console.log(`⏰ Using ${stepLabel} time steps (${timeStepMs / 1000}s intervals)`);
-        
-        // Create time-aggregated points
+        // Create time points from begin to end at given step size
         const timeAggregatedPoints = [];
         
-        for (let currentTime = startTime; currentTime <= endTime; currentTime = new Date(currentTime.getTime() + timeStepMs)) {
-            const nextTime = new Date(currentTime.getTime() + timeStepMs);
+        for (let currentTime = startTime; currentTime < endTime; currentTime = new Date(currentTime.getTime() + stepSizeMs)) {
+            const nextTime = new Date(Math.min(currentTime.getTime() + stepSizeMs, endTime.getTime()));
             
-            // Find points within this time step
+            // Find source points that fall within this time step
             const pointsInStep = timestampedPoints.filter(point => {
                 const pointTime = new Date(point.timestamp);
                 return pointTime >= currentTime && pointTime < nextTime;
             });
 
-            if (pointsInStep.length === 0) continue;
-
-            // Summarize points in this time step
-            const maxElevation = Math.max(...pointsInStep.map(p => p.elevation || 0));
-            const avgLat = pointsInStep.reduce((sum, p) => sum + p.lat, 0) / pointsInStep.length;
-            const avgLon = pointsInStep.reduce((sum, p) => sum + p.lon, 0) / pointsInStep.length;
-
-            timeAggregatedPoints.push({
-                lat: avgLat,
-                lon: avgLon,
-                elevation: maxElevation,
-                timestamp: currentTime.toISOString(),
-                timeStep: stepLabel,
-                pointCount: pointsInStep.length,
-                originalPoints: pointsInStep // Keep reference to original points
-            });
+            let resultPoint;
+            
+            if (pointsInStep.length > 0) {
+                // Use the point with the highest elevation in this time step
+                const highestElevationPoint = pointsInStep.reduce((highest, current) => {
+                    return (current.elevation || 0) > (highest.elevation || 0) ? current : highest;
+                });
+                
+                resultPoint = {
+                    lat: highestElevationPoint.lat,
+                    lon: highestElevationPoint.lon,
+                    elevation: highestElevationPoint.elevation,
+                    timestamp: currentTime.toISOString(),
+                    timeStep: stepLabel,
+                    sourcePointsCount: pointsInStep.length,
+                    hasSourceData: true,
+                    sourceTimestamp: highestElevationPoint.timestamp
+                };
+            } else {
+                // No source data for this time step - find nearest point for interpolation
+                const beforePoints = timestampedPoints.filter(p => new Date(p.timestamp) < currentTime);
+                const afterPoints = timestampedPoints.filter(p => new Date(p.timestamp) >= nextTime);
+                
+                if (beforePoints.length === 0 && afterPoints.length === 0) {
+                    throw new Error('No source data available for interpolation');
+                } else if (beforePoints.length === 0) {
+                    // Use first available point (coordinates and elevation)
+                    const nearestPoint = afterPoints[0];
+                    resultPoint = {
+                        lat: nearestPoint.lat,
+                        lon: nearestPoint.lon,
+                        elevation: nearestPoint.elevation,
+                        timestamp: currentTime.toISOString(),
+                        timeStep: stepLabel,
+                        sourcePointsCount: 0,
+                        hasSourceData: false,
+                        interpolationMethod: 'extrapolate_forward'
+                    };
+                } else if (afterPoints.length === 0) {
+                    // Use last available point (coordinates and elevation)
+                    const nearestPoint = beforePoints[beforePoints.length - 1];
+                    resultPoint = {
+                        lat: nearestPoint.lat,
+                        lon: nearestPoint.lon,
+                        elevation: nearestPoint.elevation,
+                        timestamp: currentTime.toISOString(),
+                        timeStep: stepLabel,
+                        sourcePointsCount: 0,
+                        hasSourceData: false,
+                        interpolationMethod: 'extrapolate_backward'
+                    };
+                } else {
+                    // Linear interpolation for coordinates, but use prior elevation
+                    const beforePoint = beforePoints[beforePoints.length - 1];
+                    const afterPoint = afterPoints[0];
+                    
+                    const beforeTime = new Date(beforePoint.timestamp).getTime();
+                    const afterTime = new Date(afterPoint.timestamp).getTime();
+                    const currentTimeMs = currentTime.getTime();
+                    
+                    const t = (currentTimeMs - beforeTime) / (afterTime - beforeTime);
+                    
+                    resultPoint = {
+                        lat: beforePoint.lat + (afterPoint.lat - beforePoint.lat) * t,
+                        lon: beforePoint.lon + (afterPoint.lon - afterPoint.lon) * t,
+                        elevation: beforePoint.elevation, // Use prior point's elevation, don't interpolate
+                        timestamp: currentTime.toISOString(),
+                        timeStep: stepLabel,
+                        sourcePointsCount: 0,
+                        hasSourceData: false,
+                        interpolationMethod: 'linear_coords_prior_elevation'
+                    };
+                }
+            }
+            
+            timeAggregatedPoints.push(resultPoint);
         }
         
         // Create the time-domain route
@@ -275,19 +331,20 @@ class RouteManipulator {
         timeDomainRoute.points = timeAggregatedPoints;
         timeDomainRoute.filename = `${route.filename || 'Route'} (Time Domain)`;
         
-        if (timeDomainRoute.metadata) {
-            timeDomainRoute.metadata.timeDomain = true;
-            timeDomainRoute.metadata.timeStepMs = timeStepMs;
-            timeDomainRoute.metadata.timeStep = stepLabel;
-        } else {
-            timeDomainRoute.metadata = {
-                timeDomain: true,
-                timeStepMs: timeStepMs,
-                timeStep: stepLabel
-            };
-        }
+        timeDomainRoute.metadata = {
+            ...timeDomainRoute.metadata,
+            timeDomain: true,
+            beginTime: beginTime,
+            endTime: endTime,
+            stepSizeMs: stepSizeMs,
+            stepLabel: stepLabel,
+            completeTimeRange: true
+        };
         
-        console.log(`✅ Converted to time domain: ${timeAggregatedPoints.length} time points from ${timestampedPoints.length} original points`);
+        const interpolatedCount = timeAggregatedPoints.filter(p => !p.hasSourceData).length;
+        const sourceDataCount = timeAggregatedPoints.filter(p => p.hasSourceData).length;
+        
+        console.log(`✅ Converted to time domain: ${timeAggregatedPoints.length} time points (${sourceDataCount} from source data, ${interpolatedCount} interpolated)`);
         
         return timeDomainRoute;
     }
