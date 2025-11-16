@@ -395,8 +395,9 @@ class RouteManipulator {
 
     // Private helper: Generate a unique route ID
     _generateRouteId() {
-        return 'route_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        return `route_${crypto.randomUUID()}`;
     }
+
 
     // Utility: Get route bounds (min/max lat/lon/elevation)
     getRouteBounds(route) {
