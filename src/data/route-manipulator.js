@@ -1,9 +1,6 @@
 // Route Manipulation Module for RouteCoinMe
 // Provides building block functions for route processing and aggregation
 
-import { max } from "d3";
-import { or } from "three/examples/jsm/nodes/Nodes.js";
-
 class RouteManipulator {
     constructor() {
         // Standard circle parameters for route coordinates
@@ -377,6 +374,139 @@ class RouteManipulator {
         console.log(`✅ Route resampled: ${resampledPoints.length} points, ${stats.distance.toFixed(1)}km distance`);
 
         return resampledRoute;
+    }
+
+    // 8. Apply a predetermined path to a route (overlay lat/lon while keeping elevation/time)
+    async applyPredeterminedPath(route, predeterminedPathName) {
+        if (!route.points || route.points.length === 0) {
+            throw new Error('Route must have points to apply predetermined path');
+        }
+
+        console.log(`🗺️ Applying predetermined path '${predeterminedPathName}' to route: ${route.filename || 'Unnamed'}`);
+        
+        try {
+            // Step 1: Resample the provided route to 10000 points
+            console.log(`📏 Resampling provided route to 10000 points...`);
+            const resampledRoute = this.resampleRoute(route, 10000);
+            
+            // Step 2: Load the predetermined path
+            console.log(`📂 Loading predetermined path: ${predeterminedPathName}`);
+            const predeterminedPath = await this._loadPredeterminedPath(predeterminedPathName);
+            
+            // Step 3: Resample the predetermined path to 10000 points if needed
+            let pathTemplate;
+            if (predeterminedPath.points.length !== 10000) {
+                console.log(`📏 Resampling predetermined path from ${predeterminedPath.points.length} to 10000 points...`);
+                pathTemplate = this.resampleRoute(predeterminedPath, 10000);
+            } else {
+                console.log(`✅ Predetermined path already has 10000 points`);
+                pathTemplate = predeterminedPath;
+            }
+            
+            // Step 4: Apply the predetermined lat/lon while preserving elevation and time
+            console.log(`🔄 Applying predetermined lat/lon coordinates...`);
+            const overlayedPoints = resampledRoute.points.map((originalPoint, index) => {
+                const templatePoint = pathTemplate.points[index];
+                
+                return {
+                    ...originalPoint, // Keep all original fields (elevation, timestamp, etc.)
+                    lat: templatePoint.lat, // Override with predetermined lat
+                    lon: templatePoint.lon, // Override with predetermined lon
+                };
+            });
+            
+            // Step 5: Create the new route with overlayed path
+            const overlayedRoute = this._cloneRoute(resampledRoute);
+            overlayedRoute.points = overlayedPoints;
+            overlayedRoute.filename = `${route.filename || 'Route'} (${predeterminedPathName})`;
+            
+            // Update metadata
+            overlayedRoute.metadata = {
+                ...overlayedRoute.metadata,
+                predeterminedPath: true,
+                pathTemplate: predeterminedPathName,
+                originalRoute: route.filename,
+                overlayMethod: 'lat_lon_overlay',
+                preservedData: ['elevation', 'timestamp', 'other_fields']
+            };
+            
+            // Recalculate route statistics since coordinates changed
+            const stats = this.calculateRouteStats(overlayedRoute);
+            overlayedRoute.distance = stats.distance;
+            // Keep original elevation gain/loss since we preserved elevation data
+            overlayedRoute.elevationGain = resampledRoute.elevationGain;
+            overlayedRoute.elevationLoss = resampledRoute.elevationLoss;
+            overlayedRoute.duration = resampledRoute.duration;
+            
+            console.log(`✅ Applied predetermined path: ${overlayedPoints.length} points, ${stats.distance.toFixed(1)}km distance`);
+            console.log(`📊 Preserved elevation: ${overlayedRoute.elevationGain.toFixed(1)}m gain, ${overlayedRoute.elevationLoss.toFixed(1)}m loss`);
+            
+            return overlayedRoute;
+            
+        } catch (error) {
+            console.error(`❌ Failed to apply predetermined path '${predeterminedPathName}':`, error.message);
+            throw new Error(`Failed to apply predetermined path: ${error.message}`);
+        }
+    }
+
+    // Private helper: Load a predetermined path from file
+    async _loadPredeterminedPath(pathName) {
+        try {
+            // Construct the path to the predetermined route file
+            const filePath = `/predetermined-paths/${pathName}`;
+            console.log(`📂 Fetching predetermined path from: ${filePath}`);
+            
+            // Fetch the file (this assumes the files are served from public/predetermined-paths/)
+            const response = await fetch(filePath);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const pathData = await response.json();
+            
+            // Validate the loaded path data
+            if (!pathData.points || !Array.isArray(pathData.points)) {
+                throw new Error('Predetermined path must have a points array');
+            }
+            
+            if (pathData.points.length === 0) {
+                throw new Error('Predetermined path cannot be empty');
+            }
+            
+            // Validate that points have required lat/lon fields
+            const invalidPoints = pathData.points.filter(p => 
+                typeof p.lat !== 'number' || typeof p.lon !== 'number'
+            );
+            
+            if (invalidPoints.length > 0) {
+                throw new Error(`Predetermined path has ${invalidPoints.length} points missing lat/lon coordinates`);
+            }
+            
+            console.log(`✅ Loaded predetermined path: ${pathData.points.length} points`);
+            
+            // Ensure the path has required route structure
+            return {
+                id: pathData.id || `predetermined_${pathName}`,
+                filename: pathData.filename || pathName,
+                points: pathData.points,
+                distance: pathData.distance || 0,
+                elevationGain: pathData.elevationGain || 0,
+                elevationLoss: pathData.elevationLoss || 0,
+                duration: pathData.duration || 0,
+                metadata: {
+                    ...pathData.metadata,
+                    predeterminedPath: true,
+                    pathSource: pathName
+                }
+            };
+            
+        } catch (error) {
+            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                throw new Error(`Cannot load predetermined path '${pathName}' - file not found or network error`);
+            }
+            throw error;
+        }
     }
 
     // Private helper: Interpolate points to increase point count
