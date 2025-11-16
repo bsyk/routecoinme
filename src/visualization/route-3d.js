@@ -377,7 +377,7 @@ class Route3DVisualization {
                 Math.abs(currentPos.y - this.lastLoggedPos.y) > 50 ||
                 Math.abs(currentPos.z - this.lastLoggedPos.z) > 50) {
                 
-                console.log(`📷 Camera Position: x=${currentPos.x.toFixed(1)}, y=${currentPos.y.toFixed(1)}, z=${currentPos.z.toFixed(1)}, distance=${distance.toFixed(1)}`);
+                // console.log(`📷 Camera Position: x=${currentPos.x.toFixed(1)}, y=${currentPos.y.toFixed(1)}, z=${currentPos.z.toFixed(1)}, distance=${distance.toFixed(1)}`);
                 this.lastLoggedPos = { ...currentPos };
             }
         };

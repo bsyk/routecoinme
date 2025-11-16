@@ -564,7 +564,7 @@ class FileUploadHandler {
     }
 
     // Create aggregated route with different options
-    async createAggregatedRouteWithOptions(routes, aggregationMode, elevationMode, pathPattern = 'switchbacks.json') {
+    async createAggregatedRouteWithOptions(routes, aggregationMode, elevationMode, pathPattern) {
         if (routes.length === 0) {
             throw new Error('No routes provided for aggregation');
         }
@@ -608,6 +608,10 @@ class FileUploadHandler {
         if (elevationMode === 'cumulative') {
             aggregatedRoute = this.routeManipulator.convertToCumulativeElevation(aggregatedRoute);
         }
+        
+        // Scale elevation to 10km for natural 3D visualization
+        console.log(`📏 Scaling elevation for 3D visualization...`);
+        aggregatedRoute = this.routeManipulator.scaleElevation(aggregatedRoute, 10000);
         
         // Update metadata to include aggregation details
         aggregatedRoute.filename = `Aggregated Route (${routes.length} routes) - ${elevationMode === 'actual' ? 'Distance' : 'Cumulative Climbing'}`;
@@ -681,6 +685,10 @@ class FileUploadHandler {
             aggregatedRoute = this.routeManipulator.convertToCumulativeElevation(aggregatedRoute);
         }
         
+        // Step 5.5: Scale elevation to 10km for natural 3D visualization
+        console.log(`📏 Scaling elevation for 3D visualization...`);
+        aggregatedRoute = this.routeManipulator.scaleElevation(aggregatedRoute, 10000);
+        
         // Step 6: Update metadata
         const stepLabel = timeStepMs >= 24 * 60 * 60 * 1000 ? 'day' :
                          timeStepMs >= 60 * 60 * 1000 ? 'hour' : 'minute';
@@ -725,14 +733,18 @@ class FileUploadHandler {
             aggregatedRoute = this.routeManipulator.convertToCumulativeElevation(aggregatedRoute);
         }
         
-        // Step 3: Determine the predetermined path filename
-        const pathFileName = pathPattern;
+        // Step 3: Apply the predetermined path using RouteManipulator
+        console.log(`🗺️ Applying predetermined path: ${pathPattern}`);
+        let fictionalRoute = await this.routeManipulator.applyPredeterminedPath(aggregatedRoute, pathPattern);
         
-        // Step 4: Apply the predetermined path using RouteManipulator
-        console.log(`�️ Applying predetermined path: ${pathFileName}`);
-        const fictionalRoute = await this.routeManipulator.applyPredeterminedPath(aggregatedRoute, pathFileName);
+        // Step 4: Resize to fit the circle
+        aggregatedRoute = this.routeManipulator.resizeRouteToFit(aggregatedRoute);
+
+        // Step 5: Scale elevation to 10km for natural 3D visualization
+        console.log(`📏 Scaling elevation for 3D visualization...`);
+        fictionalRoute = this.routeManipulator.scaleElevation(fictionalRoute, 10000);
         
-        // Step 5: Update metadata for fictional route
+        // Step 6: Update metadata for fictional route
         fictionalRoute.filename = `Fictional Route (${routes.length} routes) - ${pathPattern} ${elevationMode === 'actual' ? 'Elevation' : 'Cumulative'}`;
         fictionalRoute.metadata = {
             ...fictionalRoute.metadata,

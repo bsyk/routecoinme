@@ -449,6 +449,74 @@ class RouteManipulator {
         }
     }
 
+    // 9. Vertically scale a route's elevation to a target range
+    scaleElevation(route, targetMaxHeight = 10000) {
+        if (!route.points || route.points.length === 0) {
+            throw new Error('Route must have points to scale elevation');
+        }
+
+        console.log(`📏 Scaling route elevation to target max height: ${targetMaxHeight}m`);
+        
+        // Get current elevation bounds
+        const bounds = this.getRouteBounds(route);
+        const currentElevationRange = bounds.elevationRange;
+        const currentMinElevation = bounds.minElevation;
+        const currentMaxElevation = bounds.maxElevation;
+        
+        if (currentElevationRange === 0) {
+            console.log(`⚠️ Route has no elevation variation, keeping elevations unchanged`);
+            return this._cloneRoute(route);
+        }
+        
+        console.log(`📊 Current elevation: ${currentMinElevation.toFixed(1)}m to ${currentMaxElevation.toFixed(1)}m (${currentElevationRange.toFixed(1)}m range)`);
+        
+        // Scale the elevation range to target height while preserving relative differences
+        const scaleFactor = targetMaxHeight / currentElevationRange;
+        console.log(`📐 Scale factor: ${scaleFactor.toFixed(4)} (preserving relative elevation)`);
+        
+        // Create scaled route
+        const scaledRoute = this._cloneRoute(route);
+        
+        scaledRoute.points = route.points.map(point => {
+            const originalElevation = point.elevation || 0;
+            
+            // Scale relative to the minimum elevation
+            const relativeElevation = originalElevation - currentMinElevation;
+            const scaledElevation = relativeElevation * scaleFactor;
+            
+            return {
+                ...point,
+                elevation: scaledElevation,
+                originalElevation: originalElevation // Preserve original for reference
+            };
+        });
+        
+        // Update route metadata
+        scaledRoute.filename = `${route.filename || 'Route'} (Scaled ${(targetMaxHeight/1000).toFixed(1)}km)`;
+        scaledRoute.metadata = {
+            ...scaledRoute.metadata,
+            elevationScaled: true,
+            originalElevationRange: currentElevationRange,
+            targetMaxHeight: targetMaxHeight,
+            elevationScaleFactor: scaleFactor,
+            originalMinElevation: currentMinElevation,
+            originalMaxElevation: currentMaxElevation
+        };
+        
+        // Recalculate elevation statistics
+        const newBounds = this.getRouteBounds(scaledRoute);
+        const stats = this.calculateRouteStats(scaledRoute);
+        
+        scaledRoute.elevationGain = stats.elevationGain;
+        scaledRoute.elevationLoss = stats.elevationLoss;
+        
+        console.log(`✅ Elevation scaled from ${currentElevationRange.toFixed(1)}m to ${newBounds.elevationRange.toFixed(1)}m range`);
+        console.log(`📊 New elevation: ${newBounds.minElevation.toFixed(1)}m to ${newBounds.maxElevation.toFixed(1)}m`);
+        console.log(`⛰️ Scaled elevation gain: ${scaledRoute.elevationGain.toFixed(1)}m, loss: ${scaledRoute.elevationLoss.toFixed(1)}m`);
+        
+        return scaledRoute;
+    }
+
     // Private helper: Load a predetermined path from file
     async _loadPredeterminedPath(pathName) {
         try {
@@ -658,7 +726,7 @@ class RouteManipulator {
         
         console.log(`✅ Routes connected: ${combinedPoints.length} total points`);
         
-        return combinedRoute;
+        return this.resampleRoute(combinedRoute, 10000);
     }
 
     // Private helper: Deep clone a route object
