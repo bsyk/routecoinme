@@ -463,7 +463,7 @@ class RouteManipulator {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
-            const pathData = await response.json();
+            const pathData = JSON.parse(await response.text());
             
             // Validate the loaded path data
             if (!pathData.points || !Array.isArray(pathData.points)) {
