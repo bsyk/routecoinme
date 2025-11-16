@@ -403,6 +403,11 @@ class RouteManipulator {
                 pathTemplate = predeterminedPath;
             }
             
+            // Step 3.5: Normalize and resize predetermined path to consistent size
+            console.log(`🎯 Normalizing and resizing predetermined path to fit standard radius...`);
+            pathTemplate = this.normalizeRoute(pathTemplate);
+            pathTemplate = this.resizeRouteToFit(pathTemplate);
+            
             // Step 4: Apply the predetermined lat/lon while preserving elevation and time
             console.log(`🔄 Applying predetermined lat/lon coordinates...`);
             const overlayedPoints = resampledRoute.points.map((originalPoint, index) => {
