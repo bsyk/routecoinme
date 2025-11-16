@@ -200,23 +200,19 @@ class RouteManipulator {
     }
 
     // 6. Convert a route to time-domain by aggregating points along a time-series
-    convertToTimeDomain(route, beginTime, endTime, stepSizeMs) {
+    convertToTimeDomain(route, startTime, endTime, stepSizeMs) {
         if (!route.points || route.points.length === 0) {
             throw new Error('Route must have points to convert to time domain');
         }
 
-        if (!beginTime || !endTime || !stepSizeMs) {
-            throw new Error('beginTime, endTime, and stepSizeMs are all required parameters');
+        if (!startTime || !endTime || !stepSizeMs) {
+            throw new Error('startTime, endTime, and stepSizeMs are all required parameters');
         }
 
         console.log(`⏰ Converting route to time domain: ${route.filename || 'Unnamed'}`);
         
-        // Convert to Date objects if they're not already
-        const startTime = new Date(beginTime);
-        const endTime = new Date(endTime);
-        
         if (startTime >= endTime) {
-            throw new Error('beginTime must be before endTime');
+            throw new Error('startTime must be before endTime');
         }
         
         const totalTimespan = endTime - startTime;
@@ -249,7 +245,7 @@ class RouteManipulator {
                 const existing = stepMap[stepKey];
                 
                 // Keep the point with highest elevation for each time step
-                if (!existing || (sourcePoint.elevation || 0) > (existing.point.elevation || 0)) {
+                if (!existing || (sourcePoint.elevation || 0) > (existing.elevation || 0)) {
                     stepMap[stepKey] = sourcePoint;
                 }
             }
@@ -308,7 +304,7 @@ class RouteManipulator {
         timeDomainRoute.metadata = {
             ...timeDomainRoute.metadata,
             timeDomain: true,
-            beginTime: beginTime,
+            startTime: startTime,
             endTime: endTime,
             stepSizeMs: stepSizeMs,
             completeTimeRange: true
