@@ -2,12 +2,16 @@
 import GPXParser from '../data/gpx-parser.js';
 import RouteMapVisualization from '../visualization/route-map.js';
 import Route3DVisualization from '../visualization/route-3d.js';
+import StelvioWaypoints from '../data/stelvio-waypoints.js';
+import RouteStorageManager from '../data/route-storage.js';
 
 class FileUploadHandler {
     constructor() {
         this.parser = new GPXParser();
         this.mapViz = new RouteMapVisualization();
         this.viewer3D = new Route3DVisualization();
+        this.stelvioWaypoints = new StelvioWaypoints();
+        this.storageManager = new RouteStorageManager();
         this.uploadedRoutes = [];
         this.maxFiles = 10; // Reduced from 20 to help with storage limits
         this.selectedRoutes = new Set(); // For tracking selected routes for display
@@ -18,11 +22,32 @@ class FileUploadHandler {
         this.init();
     }
 
-    init() {
+    async init() {
         this.setupFileInput();
         this.setupDropZone();
         this.setupViewToggleButtons();
-        this.loadStoredRoutes();
+        await this.initializeStorage();
+        await this.loadStoredRoutes();
+    }
+
+    // Initialize storage manager
+    async initializeStorage() {
+        try {
+            console.log('🔧 Initializing storage system...');
+            
+            if (!RouteStorageManager.isSupported()) {
+                console.warn('⚠️ IndexedDB not supported, falling back to localStorage');
+                this.storageManager = null;
+                return;
+            }
+
+            await this.storageManager.init();
+            
+            console.log('✅ Storage system initialized successfully');
+        } catch (error) {
+            console.error('❌ Storage initialization failed:', error);
+            this.storageManager = null;
+        }
     }
 
     // Set up file input element
@@ -132,7 +157,7 @@ class FileUploadHandler {
         this.updateUIAfterUpload(results);
         
         console.log(`🔄 About to save ${this.uploadedRoutes.length} routes to storage...`);
-        this.saveRoutesToStorage();
+        await this.saveRoutesToStorage();
     }
 
     // Add route to collection
@@ -399,6 +424,14 @@ class FileUploadHandler {
                                     <p>Spiral path that explores the full circle and converges to the center</p>
                                 </div>
                             </label>
+                            
+                            <label class="aggregation-option">
+                                <input type="radio" name="path-pattern" value="switchbacks">
+                                <div class="option-content">
+                                    <strong>⚡ Switchbacks</strong>
+                                    <p>Stelvio Pass mountain road with authentic switchback pattern (~2500 waypoints)</p>
+                                </div>
+                            </label>
                         </div>
                     </div>
                     
@@ -456,7 +489,7 @@ class FileUploadHandler {
     }
 
     // Execute aggregation with selected options
-    executeAggregation() {
+    async executeAggregation() {
         const modal = document.querySelector('.aggregation-modal-overlay');
         const aggregationMode = modal.querySelector('input[name="aggregation-mode"]:checked').value;
         const elevationMode = modal.querySelector('input[name="elevation-mode"]:checked').value;
@@ -471,7 +504,7 @@ class FileUploadHandler {
 
         try {
             // Create aggregated route based on selected options
-            this.aggregatedRoute = this.createAggregatedRouteWithOptions(
+            this.aggregatedRoute = await this.createAggregatedRouteWithOptions(
                 this._routesToAggregate, 
                 aggregationMode, 
                 elevationMode,
@@ -513,7 +546,7 @@ class FileUploadHandler {
     }
 
     // Create aggregated route with different options
-    createAggregatedRouteWithOptions(routes, aggregationMode, elevationMode, pathPattern = 'switchbacks') {
+    async createAggregatedRouteWithOptions(routes, aggregationMode, elevationMode, pathPattern = 'switchbacks') {
         if (routes.length === 0) {
             throw new Error('No routes provided for aggregation');
         }
@@ -537,7 +570,7 @@ class FileUploadHandler {
         } else if (aggregationMode === 'time') {
             aggregatedRoute = this.createTimeBasedAggregation(sortedRoutes, elevationMode);
         } else if (aggregationMode === 'fictional') {
-            aggregatedRoute = this.createFictionalRouteAggregation(sortedRoutes, elevationMode, pathPattern);
+            aggregatedRoute = await this.createFictionalRouteAggregation(sortedRoutes, elevationMode, pathPattern);
         } else {
             throw new Error(`Unknown aggregation mode: ${aggregationMode}`);
         }
@@ -798,10 +831,10 @@ class FileUploadHandler {
         let timeStepMs;
         let stepLabel;
         
-        if (totalTimespan < 2 * 60 * 60 * 1000) { // Less than 2 hours
+        if (totalTimespan < 24 * 60 * 60 * 1000) { // Less than 24 hours
             timeStepMs = 60 * 1000; // 1 minute
             stepLabel = 'minute';
-        } else if (totalTimespan < 48 * 60 * 60 * 1000) { // Less than 48 hours
+        } else if (totalTimespan < 28 * 24 * 60 * 60 * 1000) { // Less than 28 days
             timeStepMs = 60 * 60 * 1000; // 1 hour
             stepLabel = 'hour';
         } else {
@@ -1048,7 +1081,7 @@ class FileUploadHandler {
     }
 
     // Create fictional route aggregation
-    createFictionalRouteAggregation(routes, elevationMode, pathPattern) {
+    async createFictionalRouteAggregation(routes, elevationMode, pathPattern) {
         console.log(`🎨 Creating fictional route with ${pathPattern} pattern and ${elevationMode} elevation...`);
         
         // First, get all points from all routes in chronological order (like distance-based aggregation)
@@ -1085,6 +1118,8 @@ class FileUploadHandler {
         let fictionalPoints;
         if (pathPattern === 'spiral') {
             fictionalPoints = this.generateSpiralPath(allPoints, elevationMode);
+        } else if (pathPattern === 'switchbacks') {
+            fictionalPoints = await this.generateSwitchbacksPath(allPoints, elevationMode);
         } else {
             throw new Error(`Unknown path pattern: ${pathPattern}`);
         }
@@ -1184,12 +1219,12 @@ class FileUploadHandler {
         
         console.log(`📊 Elevation range: ${minElevation.toFixed(1)}m to ${maxElevation.toFixed(1)}m (${elevationRange.toFixed(1)}m range)`);
         
-        // Scale elevations to a normalized range of 0-10000m
+        // Scale elevations to a normalized range of 0-10000m for dramatic spiral effect
         // This provides good 3D visualization without being too extreme
         const maxScaledHeight = 10000; // 10km max height for good 3D appearance
         const elevationScale = elevationRange > 0 ? maxScaledHeight / elevationRange : 1;
         
-        console.log(`📏 Scaling elevation by factor ${elevationScale.toFixed(4)} to normalize range 0-${maxScaledHeight}m`);
+        console.log(`📏 Scaling elevation by factor ${elevationScale.toFixed(4)} to dramatic range 0-${maxScaledHeight}m`);
         
         // Apply scaling to all processed points
         processedPoints.forEach(point => {
@@ -1278,6 +1313,127 @@ class FileUploadHandler {
         });
     }
 
+    // Generate switchbacks path coordinates using Stelvio Pass waypoints
+    async generateSwitchbacksPath(points, elevationMode) {
+        console.log('⚡ Generating switchbacks path using Stelvio Pass waypoints...');
+        
+        // First, process elevation data properly to preserve accuracy
+        let processedPoints = [];
+        
+        if (elevationMode === 'cumulative') {
+            // For cumulative mode, we need to calculate the cumulative climbing properly
+            console.log('📈 Processing cumulative climbing across all routes...');
+            
+            let cumulativeClimbing = 0;
+            let lastElevation = null;
+            
+            for (let i = 0; i < points.length; i++) {
+                const point = points[i];
+                
+                // Track cumulative positive elevation gain
+                if (lastElevation !== null && point.elevation > lastElevation) {
+                    cumulativeClimbing += (point.elevation - lastElevation);
+                }
+                lastElevation = point.elevation;
+                
+                processedPoints.push({
+                    ...point,
+                    elevation: cumulativeClimbing, // Set elevation to cumulative climbing total
+                    originalElevation: point.elevation, // Keep original for reference
+                    progress: i / (points.length - 1) // 0 to 1
+                });
+            }
+            
+            console.log(`📊 Total cumulative climbing calculated: ${cumulativeClimbing.toFixed(1)}m`);
+            
+        } else {
+            // For actual elevation mode, just preserve the original elevations
+            for (let i = 0; i < points.length; i++) {
+                const point = points[i];
+                processedPoints.push({
+                    ...point,
+                    elevation: point.elevation, // Keep exact original elevation
+                    progress: i / (points.length - 1) // 0 to 1
+                });
+            }
+        }
+        
+        const maxElevation = Math.max(...processedPoints.map(p => p.elevation));
+        const minElevation = Math.min(...processedPoints.map(p => p.elevation));
+        const elevationRange = maxElevation - minElevation;
+        
+        console.log(`📊 Elevation range: ${minElevation.toFixed(1)}m to ${maxElevation.toFixed(1)}m (${elevationRange.toFixed(1)}m range)`);
+        
+        // Scale elevations to a realistic range relative to the 40km radius
+        // For a 40km radius mountain (80km diameter), max elevation should be ~2-4km for realistic proportions
+        // This gives a height-to-base ratio of about 1:20 to 1:10, which is realistic for mountains
+        const maxScaledHeight = Math.min(2000, elevationRange * 0.5); // Max 2km height, or scale proportionally
+        const elevationScale = elevationRange > 0 ? maxScaledHeight / elevationRange : 1;
+        
+        console.log(`📏 Scaling elevation by factor ${elevationScale.toFixed(4)} to realistic range 0-${maxScaledHeight}m (${(maxScaledHeight/40000*100).toFixed(1)}% of radius)`);
+        
+        // Apply scaling to all processed points
+        processedPoints.forEach(point => {
+            point.scaledElevation = (point.elevation - minElevation) * elevationScale;
+            point.originalElevation = point.elevation; // Keep original for reference
+        });
+        
+        // Load Stelvio Pass waypoints
+        console.log('🏔️ Loading Stelvio Pass waypoints for path coordinates...');
+        const stelvioWaypoints = await this.stelvioWaypoints.getWaypoints();
+        
+        // Use all waypoints (keeping ~2500 points as requested)
+        const pathCoordinates = stelvioWaypoints;
+        console.log(`🗺️ Using ${pathCoordinates.length} Stelvio waypoints for path coordinates`);
+        
+        // Match the path to our data points
+        const targetPoints = Math.max(processedPoints.length, pathCoordinates.length);
+        let interpolatedPoints = [];
+        
+        // Interpolate both elevation data and path coordinates to match
+        for (let i = 0; i < targetPoints; i++) {
+            const elevationProgress = i / (targetPoints - 1);
+            const pathProgress = i / (targetPoints - 1);
+            
+            // Get elevation data
+            const elevationSourceIndex = elevationProgress * (processedPoints.length - 1);
+            const elevationLowerIndex = Math.floor(elevationSourceIndex);
+            const elevationUpperIndex = Math.min(Math.ceil(elevationSourceIndex), processedPoints.length - 1);
+            const elevationT = elevationSourceIndex - elevationLowerIndex;
+            
+            const lowerPoint = processedPoints[elevationLowerIndex];
+            const upperPoint = processedPoints[elevationUpperIndex];
+            
+            // Interpolate elevation
+            const originalElevation = lowerPoint.elevation + (upperPoint.elevation - lowerPoint.elevation) * elevationT;
+            const scaledElevation = lowerPoint.scaledElevation + (upperPoint.scaledElevation - lowerPoint.scaledElevation) * elevationT;
+            
+            // Get path coordinates from Stelvio waypoints
+            const pathSourceIndex = pathProgress * (pathCoordinates.length - 1);
+            const pathLowerIndex = Math.floor(pathSourceIndex);
+            const pathUpperIndex = Math.min(Math.ceil(pathSourceIndex), pathCoordinates.length - 1);
+            const pathT = pathSourceIndex - pathLowerIndex;
+            
+            const lowerCoord = pathCoordinates[pathLowerIndex];
+            const upperCoord = pathCoordinates[pathUpperIndex];
+            
+            // Interpolate coordinates
+            const lat = lowerCoord.lat + (upperCoord.lat - lowerCoord.lat) * pathT;
+            const lon = lowerCoord.lon + (upperCoord.lon - lowerCoord.lon) * pathT;
+            
+            interpolatedPoints.push({
+                lat: lat,
+                lon: lon,
+                elevation: scaledElevation, // Use scaled elevation for visualization
+                originalElevation: originalElevation, // Keep original for data integrity
+                timestamp: lowerPoint.timestamp // Use closest timestamp
+            });
+        }
+        
+        console.log(`⚡ Generated ${interpolatedPoints.length} points using Stelvio Pass waypoints`);
+        return interpolatedPoints;
+    }
+
     // Extract timestamp from route for sorting
     extractRouteTimestamp(route) {
         // Try multiple sources for timestamp, prioritize earliest point time
@@ -1322,16 +1478,195 @@ class FileUploadHandler {
     }
 
     // Remove a route
-    removeRoute(routeId) {
+    async removeRoute(routeId) {
         this.uploadedRoutes = this.uploadedRoutes.filter(route => route.id !== routeId);
-        this.saveRoutesToStorage();
+        await this.saveRoutesToStorage();
     }
 
     // Clear all routes
-    clearAllRoutes() {
+    async clearAllRoutes() {
         this.uploadedRoutes = [];
-        this.saveRoutesToStorage();
+        
+        // Clear from storage
+        try {
+            if (this.storageManager) {
+                await this.storageManager.clearAllRoutes();
+            } else {
+                this.clearOldStorageData();
+            }
+        } catch (error) {
+            console.warn('⚠️ Failed to clear IndexedDB, clearing localStorage:', error);
+            this.clearOldStorageData();
+        }
+        
         this.updateUIAfterUpload({ successful: [], failed: [] });
+    }
+
+    // Load routes from storage (IndexedDB or localStorage fallback)
+    async loadStoredRoutes() {
+        try {
+            console.log('🔍 Loading stored routes...');
+            
+            if (this.storageManager) {
+                // Load from IndexedDB
+                this.uploadedRoutes = await this.storageManager.loadRoutes();
+            } else {
+                // Fallback to localStorage
+                this.uploadedRoutes = this.loadRoutesFromLocalStorage();
+            }
+            
+            if (this.uploadedRoutes.length > 0) {
+                console.log(`📂 Loaded ${this.uploadedRoutes.length} routes from storage`);
+                console.log('📋 Routes loaded:', this.uploadedRoutes.map(r => r.filename));
+                console.log('🔄 Calling updateUIAfterUpload to initialize viewers...');
+                this.updateUIAfterUpload({ successful: this.uploadedRoutes, failed: [] });
+            } else {
+                console.log('📭 No routes found in storage');
+            }
+            
+        } catch (error) {
+            console.error('❌ Failed to load stored routes:', error);
+            // Try localStorage fallback
+            this.uploadedRoutes = this.loadRoutesFromLocalStorage();
+        }
+    }
+
+    // Fallback localStorage loading
+    loadRoutesFromLocalStorage() {
+        try {
+            // Test localStorage availability
+            localStorage.setItem('test', 'test');
+            localStorage.removeItem('test');
+            console.log('✅ LocalStorage is available');
+            
+            const stored = localStorage.getItem('routecoinme_gpx_routes');
+            console.log('🔍 Checking localStorage for saved routes...');
+            console.log('📦 Raw storage data:', stored ? stored.substring(0, 100) + '...' : 'null');
+            
+            if (stored) {
+                const data = JSON.parse(stored);
+                return data.routes || [];
+            } else {
+                console.log('📭 No saved data found in localStorage');
+                return [];
+            }
+        } catch (error) {
+            console.warn('❌ LocalStorage issue:', error);
+            return [];
+        }
+    }
+
+    // Save routes to storage (IndexedDB or localStorage fallback)
+    async saveRoutesToStorage() {
+        try {
+            if (this.storageManager) {
+                // Use IndexedDB for better storage capacity
+                await this.storageManager.saveRoutes(this.uploadedRoutes);
+                
+                // Perform cleanup if storage gets too large
+                await this.storageManager.cleanupOldRoutes();
+                
+            } else {
+                // Fallback to localStorage with compression
+                console.warn('📦 Using localStorage fallback (limited capacity)');
+                this.saveRoutesToLocalStorage();
+            }
+        } catch (error) {
+            console.error('❌ Failed to save routes to storage:', error);
+            // Try localStorage fallback if IndexedDB fails
+            this.saveRoutesToLocalStorage();
+        }
+    }
+
+    // Fallback localStorage storage with compression
+    saveRoutesToLocalStorage() {
+        try {
+            // Create compressed version of route data for storage
+            const compressedRoutes = this.uploadedRoutes.map(route => ({
+                id: route.id,
+                filename: route.filename,
+                // Downsample points to reduce storage size
+                points: this.downsamplePoints(route.points, 1000), // Max 1000 points per route
+                distance: route.distance,
+                elevationGain: route.elevationGain,
+                elevationLoss: route.elevationLoss,
+                duration: route.duration,
+                uploadTime: route.uploadTime,
+                // Store only essential metadata
+                metadata: {
+                    name: route.metadata?.name,
+                    description: route.metadata?.description
+                }
+            }));
+            
+            const routeData = {
+                routes: compressedRoutes,
+                timestamp: Date.now()
+            };
+            
+            // Test JSON serialization and check size
+            const jsonString = JSON.stringify(routeData);
+            const sizeKB = Math.round(jsonString.length / 1024);
+            
+            if (sizeKB > 4000) { // If larger than 4MB, remove oldest routes
+                console.warn(`⚠️ Data too large (${sizeKB}KB), removing oldest routes...`);
+                while (compressedRoutes.length > 0 && JSON.stringify({routes: compressedRoutes, timestamp: Date.now()}).length > 4000 * 1024) {
+                    compressedRoutes.shift();
+                }
+                routeData.routes = compressedRoutes;
+            }
+            
+            localStorage.setItem('routecoinme_gpx_routes', JSON.stringify(routeData));
+            console.log(`💾 Saved ${compressedRoutes.length} routes to localStorage (${Math.round(JSON.stringify(routeData).length / 1024)}KB)`);
+            
+        } catch (error) {
+            console.warn('Failed to save routes to localStorage:', error);
+        }
+    }
+
+    // Downsample GPS points to reduce storage size
+    downsamplePoints(points, maxPoints = 1000) {
+        if (!points || points.length <= maxPoints) {
+            return points;
+        }
+        
+        const step = Math.ceil(points.length / maxPoints);
+        const downsampled = [];
+        
+        // Always keep first and last point
+        downsampled.push(points[0]);
+        
+        // Sample points at regular intervals
+        for (let i = step; i < points.length - 1; i += step) {
+            downsampled.push(points[i]);
+        }
+        
+        // Always keep last point
+        if (points.length > 1) {
+            downsampled.push(points[points.length - 1]);
+        }
+        
+        console.log(`📉 Downsampled route: ${points.length} → ${downsampled.length} points`);
+        return downsampled;
+    }
+
+    // Clear old storage data to make space
+    clearOldStorageData() {
+        try {
+            // Remove any other app data that might be taking space
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('routecoinme_') && key !== 'routecoinme_gpx_routes') {
+                    localStorage.removeItem(key);
+                }
+            }
+            
+            // Clear our main storage
+            localStorage.removeItem('routecoinme_gpx_routes');
+            console.log('🧹 Cleared old storage data');
+        } catch (error) {
+            console.warn('Failed to clear storage:', error);
+        }
     }
 
     // Initialize map visualization
@@ -1553,14 +1888,18 @@ class FileUploadHandler {
             
             // Resize map after container change
             setTimeout(() => {
-                this.mapViz.resize();
+                if (this.mapViz) {
+                    this.mapViz.resize();
+                }
             }, 300);
         }
     }
 
     // Fit map to show all routes
     fitMapToRoutes() {
-        this.mapViz.fitMapToRoutes();
+        if (this.mapViz) {
+            this.mapViz.fitMapToRoutes();
+        }
     }
 
     // Download a route as GPX file
@@ -1688,8 +2027,8 @@ class FileUploadHandler {
         }
     }
 
-    // Remove a route by ID (updated to work with map)
-    removeRouteById(routeId) {
+    // Remove a route by ID (updated to work with map and IndexedDB)
+    async removeRouteById(routeId) {
         // Remove from uploaded routes array
         this.uploadedRoutes = this.uploadedRoutes.filter(route => route.id !== routeId);
         
@@ -1704,9 +2043,20 @@ class FileUploadHandler {
             this.viewer3D.removeRoute(routeId);
         }
         
+        // Remove from storage
+        try {
+            if (this.storageManager) {
+                await this.storageManager.deleteRoute(routeId);
+            }
+        } catch (error) {
+            console.warn('⚠️ Failed to delete from IndexedDB, updating localStorage:', error);
+        }
+        
+        // Save updated routes to storage
+        await this.saveRoutesToStorage();
+        
         // Update UI
         this.updateRouteList();
-        this.saveRoutesToStorage();
         
         // Update stats
         this.updateStatsDisplay();
@@ -1836,137 +2186,40 @@ class FileUploadHandler {
             statNumbers[2].textContent = `${Math.round(totalElevation)}m`;
         }
     }
-
-    // Save routes to local storage
-    saveRoutesToStorage() {
-        try {
-            // Create compressed version of route data for storage
-            const compressedRoutes = this.uploadedRoutes.map(route => ({
-                id: route.id,
-                filename: route.filename,
-                // Downsample points to reduce storage size
-                points: this.downsamplePoints(route.points, 100), // Max 100 points per route
-                distance: route.distance,
-                elevationGain: route.elevationGain,
-                elevationLoss: route.elevationLoss,
-                duration: route.duration,
-                uploadTime: route.uploadTime,
-                // Store only essential metadata
-                metadata: {
-                    name: route.metadata?.name,
-                    description: route.metadata?.description
-                }
-            }));
-            
-            const routeData = {
-                routes: compressedRoutes,
-                timestamp: Date.now()
-            };
-            
-            // Test JSON serialization and check size
-            const jsonString = JSON.stringify(routeData);
-            const sizeKB = Math.round(jsonString.length / 1024);
-            
-            if (sizeKB > 4000) { // If larger than 4MB, remove oldest routes
-                console.warn(`⚠️ Data too large (${sizeKB}KB), removing oldest routes...`);
-                while (compressedRoutes.length > 0 && JSON.stringify({routes: compressedRoutes, timestamp: Date.now()}).length > 4000 * 1024) {
-                    compressedRoutes.shift();
-                }
-                routeData.routes = compressedRoutes;
-            }
-            
-            localStorage.setItem('routecoinme_gpx_routes', JSON.stringify(routeData));
-            console.log(`💾 Saved ${compressedRoutes.length} routes to local storage (${Math.round(JSON.stringify(routeData).length / 1024)}KB)`);
-            
-        } catch (error) {
-            if (error.name === 'QuotaExceededError') {
-                console.warn('📦 Storage quota exceeded, clearing old data and retrying...');
-                this.clearOldStorageData();
-                this.saveRoutesToStorage(); // Retry once
-            } else {
-                console.warn('Failed to save routes to local storage:', error);
+    // Get storage information for debugging
+    async getStorageInfo() {
+        if (this.storageManager) {
+            return await this.storageManager.getStorageInfo();
+        } else {
+            // Fallback info for localStorage
+            try {
+                const stored = localStorage.getItem('routecoinme_gpx_routes');
+                const sizeKB = stored ? Math.round(stored.length / 1024) : 0;
+                return {
+                    storage: 'localStorage',
+                    totalRoutes: this.uploadedRoutes.length,
+                    totalSizeKB: sizeKB,
+                    averageSizeKB: this.uploadedRoutes.length > 0 ? sizeKB / this.uploadedRoutes.length : 0
+                };
+            } catch (error) {
+                return { storage: 'localStorage', error: error.message };
             }
         }
     }
 
-    // Downsample GPS points to reduce storage size
-    downsamplePoints(points, maxPoints = 100) {
-        if (!points || points.length <= maxPoints) {
-            return points;
+    // Debug storage info (accessible via console: window.fileUploader.debugStorage())
+    async debugStorage() {
+        const info = await this.getStorageInfo();
+        console.log('📊 Storage Information:', info);
+        
+        if (this.storageManager) {
+            console.log('✅ Using IndexedDB storage (high capacity)');
+        } else {
+            console.log('⚠️ Using localStorage fallback (limited capacity)');
         }
-        
-        const step = Math.ceil(points.length / maxPoints);
-        const downsampled = [];
-        
-        // Always keep first and last point
-        downsampled.push(points[0]);
-        
-        // Sample points at regular intervals
-        for (let i = step; i < points.length - 1; i += step) {
-            downsampled.push(points[i]);
-        }
-        
-        // Always keep last point
-        if (points.length > 1) {
-            downsampled.push(points[points.length - 1]);
-        }
-        
-        console.log(`📉 Downsampled route: ${points.length} → ${downsampled.length} points`);
-        return downsampled;
+        return info;
     }
-
-    // Clear old storage data to make space
-    clearOldStorageData() {
-        try {
-            // Remove any other app data that might be taking space
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith('routecoinme_') && key !== 'routecoinme_gpx_routes') {
-                    localStorage.removeItem(key);
-                }
-            }
-            
-            // Clear our main storage
-            localStorage.removeItem('routecoinme_gpx_routes');
-            console.log('🧹 Cleared old storage data');
-        } catch (error) {
-            console.warn('Failed to clear storage:', error);
-        }
-    }
-
-    // Load routes from local storage
-    loadStoredRoutes() {
-        try {
-            // Test localStorage availability
-            localStorage.setItem('test', 'test');
-            localStorage.removeItem('test');
-            console.log('✅ LocalStorage is available');
-            
-            const stored = localStorage.getItem('routecoinme_gpx_routes');
-            console.log('🔍 Checking local storage for saved routes...');
-            console.log('📦 Raw storage data:', stored ? stored.substring(0, 100) + '...' : 'null');
-            
-            if (stored) {
-                const data = JSON.parse(stored);
-                this.uploadedRoutes = data.routes || [];
-                
-                if (this.uploadedRoutes.length > 0) {
-                    console.log(`📂 Loaded ${this.uploadedRoutes.length} routes from storage`);
-                    console.log('📋 Routes loaded:', this.uploadedRoutes.map(r => r.filename));
-                    console.log('🔄 Calling updateUIAfterUpload to initialize viewers...');
-                    this.updateUIAfterUpload({ successful: this.uploadedRoutes, failed: [] });
-                } else {
-                    console.log('📭 No routes found in storage');
-                }
-            } else {
-                console.log('📭 No saved data found in local storage');
-            }
-        } catch (error) {
-            console.warn('❌ LocalStorage issue:', error);
-            this.uploadedRoutes = [];
-        }
-    }
-
+        
     // Switch view mode (unified method for HTML onclick handlers)
     switchViewMode(mode) {
         if (mode === 'map') {
