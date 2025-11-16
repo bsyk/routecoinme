@@ -260,10 +260,14 @@ class RouteManipulator {
         console.log(`✅ Found source data for ${Object.keys(timeStepsBestPoints).length} time steps`);
 
         // Generate complete time series using functional reduce approach
-        const allTimeSteps = [];
-        for (let currentTime = startTime.getTime(); currentTime < endTime.getTime(); currentTime += stepSizeMs) {
-            allTimeSteps.push(this._stepStartMs(currentTime, startTime.getTime(), stepSizeMs));
-        }
+        const start = this._stepStartMs(startTime.getTime(), startTime.getTime(), stepSizeMs); // snap to step boundary
+        const end = endTime.getTime();
+        const count = Math.ceil((end - start) / stepSizeMs);
+
+        const allTimeSteps = Array.from(
+            { length: count },
+            (_, i) => start + i * stepSizeMs
+        );
 
         const timeAggregatedPoints = allTimeSteps.reduce((acc, currentTimeMs) => {
             const stepKey = currentTimeMs.toString();
@@ -445,17 +449,12 @@ class RouteManipulator {
             };
         }
 
-        let totalDistance = 0;
-        let totalElevationGain = 0;
-        let totalElevationLoss = 0;
-        let lastElevation = null;
-
-        for (let i = 1; i < route.points.length; i++) {
-            const prevPoint = route.points[i - 1];
-            const currPoint = route.points[i];
+        // Use functional reduce to calculate distance and elevation changes
+        const stats = route.points.slice(1).reduce((acc, currPoint, index) => {
+            const prevPoint = route.points[index]; // index is offset by slice(1)
 
             // Calculate distance
-            totalDistance += this.calculateDistance(
+            acc.distance += this.calculateDistance(
                 prevPoint.lat, prevPoint.lon,
                 currPoint.lat, currPoint.lon
             );
@@ -464,27 +463,32 @@ class RouteManipulator {
             if (prevPoint.elevation !== undefined && currPoint.elevation !== undefined) {
                 const elevationChange = currPoint.elevation - prevPoint.elevation;
                 if (elevationChange > 0) {
-                    totalElevationGain += elevationChange;
+                    acc.elevationGain += elevationChange;
                 } else {
-                    totalElevationLoss += Math.abs(elevationChange);
+                    acc.elevationLoss += Math.abs(elevationChange);
                 }
             }
-        }
+
+            return acc;
+        }, {
+            distance: 0,
+            elevationGain: 0,
+            elevationLoss: 0
+        });
 
         // Calculate duration if timestamps are available
-        let totalDuration = 0;
         const firstPoint = route.points.find(p => p.timestamp);
         const lastPoint = [...route.points].reverse().find(p => p.timestamp);
         
-        if (firstPoint && lastPoint) {
-            totalDuration = (new Date(lastPoint.timestamp) - new Date(firstPoint.timestamp)) / 1000;
-        }
+        const duration = firstPoint && lastPoint 
+            ? (new Date(lastPoint.timestamp) - new Date(firstPoint.timestamp)) / 1000
+            : 0;
 
         return {
-            distance: totalDistance,
-            elevationGain: totalElevationGain,
-            elevationLoss: totalElevationLoss,
-            duration: totalDuration
+            distance: stats.distance,
+            elevationGain: stats.elevationGain,
+            elevationLoss: stats.elevationLoss,
+            duration: duration
         };
     }
 }
