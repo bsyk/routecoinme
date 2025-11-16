@@ -4,6 +4,7 @@ import RouteMapVisualization from '../visualization/route-map.js';
 import Route3DVisualization from '../visualization/route-3d.js';
 import StelvioWaypoints from '../data/stelvio-waypoints.js';
 import RouteStorageManager from '../data/route-storage.js';
+import RouteLocalStorageManager from '../data/route-storage-local.js';
 
 class FileUploadHandler {
     constructor() {
@@ -11,7 +12,7 @@ class FileUploadHandler {
         this.mapViz = new RouteMapVisualization();
         this.viewer3D = new Route3DVisualization();
         this.stelvioWaypoints = new StelvioWaypoints();
-        this.storageManager = new RouteStorageManager();
+        this.storageManager = null; // Will be initialized in initializeStorage()
         this.uploadedRoutes = [];
         this.maxFiles = 10; // Reduced from 20 to help with storage limits
         this.selectedRoutes = new Set(); // For tracking selected routes for display
@@ -35,17 +36,32 @@ class FileUploadHandler {
         try {
             console.log('🔧 Initializing storage system...');
             
-            if (!RouteStorageManager.isSupported()) {
+            // Try IndexedDB first (preferred for larger capacity)
+            if (RouteStorageManager.isSupported()) {
+                try {
+                    this.storageManager = new RouteStorageManager();
+                    await this.storageManager.init();
+                    console.log('✅ Using IndexedDB storage (high capacity)');
+                    return;
+                } catch (indexedDBError) {
+                    console.warn('⚠️ IndexedDB failed, falling back to localStorage:', indexedDBError);
+                }
+            } else {
                 console.warn('⚠️ IndexedDB not supported, falling back to localStorage');
-                this.storageManager = null;
-                return;
             }
 
-            await this.storageManager.init();
+            // Fallback to localStorage
+            if (RouteLocalStorageManager.isSupported()) {
+                this.storageManager = new RouteLocalStorageManager();
+                await this.storageManager.init();
+                console.log('✅ Using localStorage storage (limited capacity)');
+            } else {
+                console.error('❌ No storage options available');
+                this.storageManager = null;
+            }
             
-            console.log('✅ Storage system initialized successfully');
         } catch (error) {
-            console.error('❌ Storage initialization failed:', error);
+            console.error('❌ Storage initialization failed completely:', error);
             this.storageManager = null;
         }
     }
@@ -1491,28 +1507,28 @@ class FileUploadHandler {
         try {
             if (this.storageManager) {
                 await this.storageManager.clearAllRoutes();
-            } else {
-                this.clearOldStorageData();
             }
         } catch (error) {
-            console.warn('⚠️ Failed to clear IndexedDB, clearing localStorage:', error);
-            this.clearOldStorageData();
+            console.error('❌ Failed to clear storage:', error);
+            // For localStorage manager, we can try the cleanup method
+            if (this.storageManager && typeof this.storageManager.clearOldStorageData === 'function') {
+                await this.storageManager.clearOldStorageData();
+            }
         }
         
         this.updateUIAfterUpload({ successful: [], failed: [] });
     }
 
-    // Load routes from storage (IndexedDB or localStorage fallback)
+    // Load routes from storage (using unified storage manager interface)
     async loadStoredRoutes() {
         try {
             console.log('🔍 Loading stored routes...');
             
             if (this.storageManager) {
-                // Load from IndexedDB
                 this.uploadedRoutes = await this.storageManager.loadRoutes();
             } else {
-                // Fallback to localStorage
-                this.uploadedRoutes = this.loadRoutesFromLocalStorage();
+                console.warn('⚠️ No storage manager available');
+                this.uploadedRoutes = [];
             }
             
             if (this.uploadedRoutes.length > 0) {
@@ -1526,146 +1542,23 @@ class FileUploadHandler {
             
         } catch (error) {
             console.error('❌ Failed to load stored routes:', error);
-            // Try localStorage fallback
-            this.uploadedRoutes = this.loadRoutesFromLocalStorage();
+            this.uploadedRoutes = [];
         }
     }
 
-    // Fallback localStorage loading
-    loadRoutesFromLocalStorage() {
-        try {
-            // Test localStorage availability
-            localStorage.setItem('test', 'test');
-            localStorage.removeItem('test');
-            console.log('✅ LocalStorage is available');
-            
-            const stored = localStorage.getItem('routecoinme_gpx_routes');
-            console.log('🔍 Checking localStorage for saved routes...');
-            console.log('📦 Raw storage data:', stored ? stored.substring(0, 100) + '...' : 'null');
-            
-            if (stored) {
-                const data = JSON.parse(stored);
-                return data.routes || [];
-            } else {
-                console.log('📭 No saved data found in localStorage');
-                return [];
-            }
-        } catch (error) {
-            console.warn('❌ LocalStorage issue:', error);
-            return [];
-        }
-    }
-
-    // Save routes to storage (IndexedDB or localStorage fallback)
+    // Save routes to storage (using unified storage manager interface)
     async saveRoutesToStorage() {
         try {
             if (this.storageManager) {
-                // Use IndexedDB for better storage capacity
                 await this.storageManager.saveRoutes(this.uploadedRoutes);
                 
                 // Perform cleanup if storage gets too large
                 await this.storageManager.cleanupOldRoutes();
-                
             } else {
-                // Fallback to localStorage with compression
-                console.warn('📦 Using localStorage fallback (limited capacity)');
-                this.saveRoutesToLocalStorage();
+                console.warn('⚠️ No storage manager available, routes will not persist');
             }
         } catch (error) {
             console.error('❌ Failed to save routes to storage:', error);
-            // Try localStorage fallback if IndexedDB fails
-            this.saveRoutesToLocalStorage();
-        }
-    }
-
-    // Fallback localStorage storage with compression
-    saveRoutesToLocalStorage() {
-        try {
-            // Create compressed version of route data for storage
-            const compressedRoutes = this.uploadedRoutes.map(route => ({
-                id: route.id,
-                filename: route.filename,
-                // Downsample points to reduce storage size
-                points: this.downsamplePoints(route.points, 1000), // Max 1000 points per route
-                distance: route.distance,
-                elevationGain: route.elevationGain,
-                elevationLoss: route.elevationLoss,
-                duration: route.duration,
-                uploadTime: route.uploadTime,
-                // Store only essential metadata
-                metadata: {
-                    name: route.metadata?.name,
-                    description: route.metadata?.description
-                }
-            }));
-            
-            const routeData = {
-                routes: compressedRoutes,
-                timestamp: Date.now()
-            };
-            
-            // Test JSON serialization and check size
-            const jsonString = JSON.stringify(routeData);
-            const sizeKB = Math.round(jsonString.length / 1024);
-            
-            if (sizeKB > 4000) { // If larger than 4MB, remove oldest routes
-                console.warn(`⚠️ Data too large (${sizeKB}KB), removing oldest routes...`);
-                while (compressedRoutes.length > 0 && JSON.stringify({routes: compressedRoutes, timestamp: Date.now()}).length > 4000 * 1024) {
-                    compressedRoutes.shift();
-                }
-                routeData.routes = compressedRoutes;
-            }
-            
-            localStorage.setItem('routecoinme_gpx_routes', JSON.stringify(routeData));
-            console.log(`💾 Saved ${compressedRoutes.length} routes to localStorage (${Math.round(JSON.stringify(routeData).length / 1024)}KB)`);
-            
-        } catch (error) {
-            console.warn('Failed to save routes to localStorage:', error);
-        }
-    }
-
-    // Downsample GPS points to reduce storage size
-    downsamplePoints(points, maxPoints = 1000) {
-        if (!points || points.length <= maxPoints) {
-            return points;
-        }
-        
-        const step = Math.ceil(points.length / maxPoints);
-        const downsampled = [];
-        
-        // Always keep first and last point
-        downsampled.push(points[0]);
-        
-        // Sample points at regular intervals
-        for (let i = step; i < points.length - 1; i += step) {
-            downsampled.push(points[i]);
-        }
-        
-        // Always keep last point
-        if (points.length > 1) {
-            downsampled.push(points[points.length - 1]);
-        }
-        
-        console.log(`📉 Downsampled route: ${points.length} → ${downsampled.length} points`);
-        return downsampled;
-    }
-
-    // Clear old storage data to make space
-    clearOldStorageData() {
-        try {
-            // Remove any other app data that might be taking space
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith('routecoinme_') && key !== 'routecoinme_gpx_routes') {
-                    localStorage.removeItem(key);
-                }
-            }
-            
-            // Clear our main storage
-            localStorage.removeItem('routecoinme_gpx_routes');
-            console.log('🧹 Cleared old storage data');
-        } catch (error) {
-            console.warn('Failed to clear storage:', error);
         }
     }
 
@@ -2191,19 +2084,12 @@ class FileUploadHandler {
         if (this.storageManager) {
             return await this.storageManager.getStorageInfo();
         } else {
-            // Fallback info for localStorage
-            try {
-                const stored = localStorage.getItem('routecoinme_gpx_routes');
-                const sizeKB = stored ? Math.round(stored.length / 1024) : 0;
-                return {
-                    storage: 'localStorage',
-                    totalRoutes: this.uploadedRoutes.length,
-                    totalSizeKB: sizeKB,
-                    averageSizeKB: this.uploadedRoutes.length > 0 ? sizeKB / this.uploadedRoutes.length : 0
-                };
-            } catch (error) {
-                return { storage: 'localStorage', error: error.message };
-            }
+            return { 
+                error: 'No storage manager available',
+                totalRoutes: 0,
+                totalSizeKB: 0,
+                averageSizeKB: 0
+            };
         }
     }
 
@@ -2213,9 +2099,16 @@ class FileUploadHandler {
         console.log('📊 Storage Information:', info);
         
         if (this.storageManager) {
-            console.log('✅ Using IndexedDB storage (high capacity)');
+            const storageType = this.storageManager.constructor.name;
+            if (storageType === 'RouteStorageManager') {
+                console.log('✅ Using IndexedDB storage (high capacity)');
+            } else if (storageType === 'RouteLocalStorageManager') {
+                console.log('⚠️ Using localStorage storage (limited capacity)');
+            } else {
+                console.log('🔧 Using custom storage manager:', storageType);
+            }
         } else {
-            console.log('⚠️ Using localStorage fallback (limited capacity)');
+            console.log('❌ No storage manager available');
         }
         return info;
     }
