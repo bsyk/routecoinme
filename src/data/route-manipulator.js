@@ -2,6 +2,7 @@
 // Provides building block functions for route processing and aggregation
 
 import { max } from "d3";
+import { or } from "three/examples/jsm/nodes/Nodes.js";
 
 class RouteManipulator {
     constructor() {
@@ -380,32 +381,37 @@ class RouteManipulator {
 
     // Private helper: Interpolate points to increase point count
     _upsamplePoints(originalPoints, targetPointCount) {
-        // Calculate spacing for intermediate points
-        const segmentCount = targetPointCount - 1;
+        const n = originalPoints.length;
+        if (n < 2) return [...originalPoints]; // Not enough points to interpolate
 
-        // Generate middle points functionally
+        const segmentCount = targetPointCount - 1; // Number of intervals in target array
+
+        // Generate all middle points
         const middlePoints = Array.from({ length: targetPointCount - 2 }, (_, i) => {
-            const progress = (i + 1) / segmentCount; // 0 to 1
-            const sourcePosition = progress * (originalPoints.length - 1); // Position in original array
+            const progress = (i + 1) / segmentCount; // 0..1 relative position
+            const sourcePosition = progress * (n - 1); // fractional index in original array
 
             const lowerIndex = Math.floor(sourcePosition);
-            const upperIndex = Math.min(Math.ceil(sourcePosition), originalPoints.length - 1);
-            const t = sourcePosition - lowerIndex; // Interpolation factor
+            const upperIndex = Math.min(Math.ceil(sourcePosition), n - 1);
+            const t = sourcePosition - lowerIndex; // weight for upper point
 
             const lowerPoint = originalPoints[lowerIndex];
             const upperPoint = originalPoints[upperIndex];
 
-            // Interpolate all fields
-            return _interpolatePoints([lowerPoint, upperPoint]);
+            // Interpolate each field numerically
+            return {
+                ...lowerPoint, // start with lower point's data
+                lat: lowerPoint.lat + (upperPoint.lat - lowerPoint.lat) * t,
+                lon: lowerPoint.lon + (upperPoint.lon - lowerPoint.lon) * t,
+                elevation: (lowerPoint.elevation || 0) + ((upperPoint.elevation || 0) - (lowerPoint.elevation || 0)) * t,
+            };
         });
 
-        // Combine first point, middle points, and last point
+        // Return first point + middle points + last point
         return [
-            // Always keep first point exactly
-            { ...originalPoints[0] },
+            { ...originalPoints[0] }, // first
             ...middlePoints,
-            // Always keep last point exactly
-            { ...originalPoints.at(-1) },
+            { ...originalPoints.at(-1) } // last
         ];
     }
 
@@ -434,7 +440,7 @@ class RouteManipulator {
             }
 
             // Interpolate position between points of the segment using the max elevation
-            return this._interpolatePoints(segmentPoints, true);
+            return this._getCenterPoint(segmentPoints, true);
         });
 
         // Combine first point, middle points, and last point
@@ -447,13 +453,14 @@ class RouteManipulator {
         ];
     }
 
-    _interpolatePoints(points, useMaxElevation = false) {
+    _getCenterPoint(points, useMaxElevation = false) {
         const bounds = this.getRouteBounds({ points });
         return {
             ...points[0], // Copy other fields from first point
             lat: bounds.centerLat,
             lon: bounds.centerLon,
-            timestamp: bounds.centerTimestamp,
+            // Timestamps may not be present
+            ...( bounds.centerTimestamp && { timestamp: bounds.centerTimestamp }),
             elevation: useMaxElevation ? bounds.maxElevation : bounds.centerElevation
         }
     }
