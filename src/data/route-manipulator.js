@@ -1,6 +1,8 @@
 // Route Manipulation Module for RouteCoinMe
 // Provides building block functions for route processing and aggregation
 
+import { max } from "d3";
+
 class RouteManipulator {
     constructor() {
         // Standard circle parameters for route coordinates
@@ -318,6 +320,144 @@ class RouteManipulator {
         return timeDomainRoute;
     }
 
+    // 7. Resample a route to a specific point count (interpolate up or downsample down)
+    resampleRoute(route, targetPointCount) {
+        if (!route.points || route.points.length === 0) {
+            throw new Error('Route must have points to resample');
+        }
+
+        if (targetPointCount < 2) {
+            throw new Error('Target point count must be at least 2');
+        }
+
+        if (route.points.length === targetPointCount) {
+            console.log(`✅ Route already has ${targetPointCount} points, returning clone`);
+            return this._cloneRoute(route);
+        }
+
+        console.log(`🔄 Resampling route from ${route.points.length} to ${targetPointCount} points`);
+
+        const originalPoints = route.points;
+        const isUpsampling = targetPointCount > originalPoints.length;
+        
+        let resampledPoints;
+        
+        if (isUpsampling) {
+            // Interpolate points to increase count
+            resampledPoints = this._upsamplePoints(originalPoints, targetPointCount);
+            console.log(`📈 Upsampled route by interpolating ${targetPointCount - originalPoints.length} new points`);
+        } else {
+            // Downsample points to decrease count
+            resampledPoints = this._downsamplePoints(originalPoints, targetPointCount);
+            console.log(`📉 Downsampled route by removing ${originalPoints.length - targetPointCount} points`);
+        }
+
+        // Create resampled route
+        const resampledRoute = this._cloneRoute(route);
+        resampledRoute.points = resampledPoints;
+        resampledRoute.filename = `${route.filename || 'Route'} (${targetPointCount} points)`;
+        
+        // Update metadata
+        resampledRoute.metadata = {
+            ...resampledRoute.metadata,
+            resampled: true,
+            originalPointCount: originalPoints.length,
+            targetPointCount: targetPointCount,
+            resampleMethod: isUpsampling ? 'interpolation' : 'downsampling'
+        };
+
+        // Recalculate route statistics since point density changed
+        const stats = this.calculateRouteStats(resampledRoute);
+        resampledRoute.distance = stats.distance;
+        resampledRoute.elevationGain = stats.elevationGain;
+        resampledRoute.elevationLoss = stats.elevationLoss;
+        resampledRoute.duration = stats.duration;
+
+        console.log(`✅ Route resampled: ${resampledPoints.length} points, ${stats.distance.toFixed(1)}km distance`);
+
+        return resampledRoute;
+    }
+
+    // Private helper: Interpolate points to increase point count
+    _upsamplePoints(originalPoints, targetPointCount) {
+        // Calculate spacing for intermediate points
+        const segmentCount = targetPointCount - 1;
+
+        // Generate middle points functionally
+        const middlePoints = Array.from({ length: targetPointCount - 2 }, (_, i) => {
+            const progress = (i + 1) / segmentCount; // 0 to 1
+            const sourcePosition = progress * (originalPoints.length - 1); // Position in original array
+
+            const lowerIndex = Math.floor(sourcePosition);
+            const upperIndex = Math.min(Math.ceil(sourcePosition), originalPoints.length - 1);
+            const t = sourcePosition - lowerIndex; // Interpolation factor
+
+            const lowerPoint = originalPoints[lowerIndex];
+            const upperPoint = originalPoints[upperIndex];
+
+            // Interpolate all fields
+            return _interpolatePoints([lowerPoint, upperPoint]);
+        });
+
+        // Combine first point, middle points, and last point
+        return [
+            // Always keep first point exactly
+            { ...originalPoints[0] },
+            ...middlePoints,
+            // Always keep last point exactly
+            { ...originalPoints.at(-1) },
+        ];
+    }
+
+
+    // Private helper: Downsample points to decrease point count
+    _downsamplePoints(originalPoints, targetPointCount) {
+        // Calculate how many original points to combine for each target point
+        const segmentCount = targetPointCount - 1;
+        const originalSegmentSize = (originalPoints.length - 1) / segmentCount;
+
+        // Generate middle points functionally
+        const middlePoints = Array.from({ length: targetPointCount - 2 }, (_, i) => {
+            // Calculate start and end of the current segment
+            const segmentStart = 1 + i * originalSegmentSize; // Skip first point
+            const segmentEnd = 1 + (i + 1) * originalSegmentSize;
+
+            const startIndex = Math.floor(segmentStart);
+            const endIndex = Math.min(Math.ceil(segmentEnd), originalPoints.length - 1);
+
+            // Get all points in this segment
+            const segmentPoints = originalPoints.slice(startIndex, endIndex + 1);
+
+            if (segmentPoints.length === 0) {
+                // Fallback to nearest point
+                return { ...originalPoints[startIndex] };
+            }
+
+            // Interpolate position between points of the segment using the max elevation
+            return this._interpolatePoints(segmentPoints, true);
+        });
+
+        // Combine first point, middle points, and last point
+        return [
+            // Always keep first point exactly
+            { ...originalPoints[0] },
+            ...middlePoints,
+            // Always keep last point exactly
+            { ...originalPoints.at(-1) },
+        ];
+    }
+
+    _interpolatePoints(points, useMaxElevation = false) {
+        const bounds = this.getRouteBounds({ points });
+        return {
+            ...points[0], // Copy other fields from first point
+            lat: bounds.centerLat,
+            lon: bounds.centerLon,
+            timestamp: bounds.centerTimestamp,
+            elevation: useMaxElevation ? bounds.maxElevation : bounds.centerElevation
+        }
+    }
+
     _stepStartMs(pointTimeMs, startTimeMs, stepSizeMs) {
         return Math.floor((pointTimeMs - startTimeMs) / stepSizeMs) * stepSizeMs + startTimeMs;
     }
@@ -409,16 +549,40 @@ class RouteManipulator {
         const lons = route.points.map(p => p.lon);
         const elevations = route.points.map(p => p.elevation || 0);
 
+        const minLat =  Math.min(...lats);
+        const maxLat =  Math.max(...lats);
+        const minLon =  Math.min(...lons);
+        const maxLon =  Math.max(...lons);
+        const minElevation =  Math.min(...elevations);
+        const maxElevation =  Math.max(...elevations);
+        const minTimestamp =  Math.min(...route.points.map(p => p.timestamp ? new Date(p.timestamp).getTime() : Infinity));
+        const maxTimestamp =  Math.max(...route.points.map(p => p.timestamp ? new Date(p.timestamp).getTime() : -Infinity));
+        const latRange =  maxLat - minLat;
+        const lonRange =  maxLon - minLon;
+        const elevationRange =  maxElevation - minElevation;
+        const timestampRange =  maxTimestamp - minTimestamp;
+        const centerLat = (minLat + maxLat) / 2;
+        const centerLon = (minLon + maxLon) / 2;
+        const centerElevation = (minElevation + maxElevation) / 2;
+        const centerTimestamp = (minTimestamp + maxTimestamp) / 2;
+
         return {
-            minLat: Math.min(...lats),
-            maxLat: Math.max(...lats),
-            minLon: Math.min(...lons),
-            maxLon: Math.max(...lons),
-            minElevation: Math.min(...elevations),
-            maxElevation: Math.max(...elevations),
-            latRange: Math.max(...lats) - Math.min(...lats),
-            lonRange: Math.max(...lons) - Math.min(...lons),
-            elevationRange: Math.max(...elevations) - Math.min(...elevations)
+            minLat,
+            maxLat,
+            minLon,
+            maxLon,
+            minElevation,
+            maxElevation,
+            minTimestamp,
+            maxTimestamp,
+            latRange,
+            lonRange,
+            elevationRange,
+            timestampRange,
+            centerLat,
+            centerLon,
+            centerElevation,
+            centerTimestamp
         };
     }
 
