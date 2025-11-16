@@ -436,7 +436,7 @@ class FileUploadHandler {
                         <h4>Path Pattern</h4>
                         <div class="aggregation-options">
                             <label class="aggregation-option">
-                                <input type="radio" name="path-pattern" value="spiral" checked>
+                                <input type="radio" name="path-pattern" value="spiral.json" checked>
                                 <div class="option-content">
                                     <strong>🌀 Spiral</strong>
                                     <p>Spiral path that explores the full circle and converges to the center</p>
@@ -444,7 +444,7 @@ class FileUploadHandler {
                             </label>
                             
                             <label class="aggregation-option">
-                                <input type="radio" name="path-pattern" value="switchbacks">
+                                <input type="radio" name="path-pattern" value="switchbacks.json">
                                 <div class="option-content">
                                     <strong>⚡ Switchbacks</strong>
                                     <p>Stelvio Pass mountain road with authentic switchback pattern (~2500 waypoints)</p>
@@ -511,7 +511,7 @@ class FileUploadHandler {
         const modal = document.querySelector('.aggregation-modal-overlay');
         const aggregationMode = modal.querySelector('input[name="aggregation-mode"]:checked').value;
         const elevationMode = modal.querySelector('input[name="elevation-mode"]:checked').value;
-        const pathPattern = modal.querySelector('input[name="path-pattern"]:checked')?.value || 'spiral';
+        const pathPattern = modal.querySelector('input[name="path-pattern"]:checked')?.value || 'spiral.json';
         
         modal.remove();
         
@@ -564,7 +564,7 @@ class FileUploadHandler {
     }
 
     // Create aggregated route with different options
-    async createAggregatedRouteWithOptions(routes, aggregationMode, elevationMode, pathPattern = 'switchbacks') {
+    async createAggregatedRouteWithOptions(routes, aggregationMode, elevationMode, pathPattern = 'switchbacks.json') {
         if (routes.length === 0) {
             throw new Error('No routes provided for aggregation');
         }
@@ -713,358 +713,51 @@ class FileUploadHandler {
         return aggregatedRoute;
     }
 
-    // Create fictional route aggregation
+    // Create fictional route aggregation using RouteManipulator
     async createFictionalRouteAggregation(routes, elevationMode, pathPattern) {
-        console.log(`🎨 Creating fictional route with ${pathPattern} pattern and ${elevationMode} elevation...`);
+        console.log(`🎨 Creating fictional route with ${pathPattern} pattern and ${elevationMode} elevation using RouteManipulator...`);
         
-        // First, get all points from all routes in chronological order (like distance-based aggregation)
-        let allPoints = [];
-        let totalDistance = 0;
-        let totalElevationGain = 0;
-        let totalElevationLoss = 0;
-        let totalDuration = 0;
-
-        routes.forEach(route => {
-            // Add all points from this route while preserving elevation and timing
-            route.points.forEach(point => {
-                allPoints.push({
-                    elevation: point.elevation,
-                    timestamp: point.timestamp,
-                    originalLat: point.lat,
-                    originalLon: point.lon
-                });
-            });
-
-            totalDistance += route.distance || 0;
-            totalElevationGain += route.elevationGain || 0;
-            totalElevationLoss += route.elevationLoss || 0;
-            totalDuration += route.duration || 0;
-        });
-
-        if (allPoints.length === 0) {
-            throw new Error('No points found in routes for fictional generation');
+        // Step 1: Aggregate routes using RouteManipulator (distance-based)
+        let aggregatedRoute = this.routeManipulator.aggregateRoutes(routes);
+        
+        // Step 2: Apply elevation mode processing
+        if (elevationMode === 'cumulative') {
+            aggregatedRoute = this.routeManipulator.convertToCumulativeElevation(aggregatedRoute);
         }
-
-        console.log(`🔧 Processing ${allPoints.length} points for fictional ${pathPattern} route...`);
-
-        // Generate fictional coordinates based on path pattern
-        let fictionalPoints;
-        if (pathPattern === 'spiral') {
-            fictionalPoints = this.generateSpiralPath(allPoints, elevationMode);
-        } else if (pathPattern === 'switchbacks') {
-            fictionalPoints = await this.generateSwitchbacksPath(allPoints, elevationMode);
-        } else {
-            throw new Error(`Unknown path pattern: ${pathPattern}`);
-        }
-
-        // Create the aggregated route object
-        const aggregatedRoute = {
-            id: this.generateRouteId(),
-            filename: `Fictional Route (${routes.length} routes) - ${pathPattern} ${elevationMode === 'actual' ? 'Elevation' : 'Cumulative'}`,
-            points: fictionalPoints,
-            distance: totalDistance,
-            elevationGain: totalElevationGain,
-            elevationLoss: totalElevationLoss,
-            duration: totalDuration,
-            uploadTime: Date.now(),
-            metadata: {
-                name: `Fictional ${pathPattern} Route - ${routes.map(r => r.filename).join(', ')}`,
-                description: `Synthetic ${pathPattern} route preserving elevation and timing from ${routes.length} routes with ${elevationMode} elevation`,
-                aggregationMode: 'fictional',
-                elevationMode: elevationMode,
-                pathPattern: pathPattern,
-                sourceRoutes: routes.map(r => ({
-                    id: r.id,
-                    filename: r.filename,
-                    timestamp: this.extractRouteTimestamp(r)
-                }))
-            }
+        
+        // Step 3: Determine the predetermined path filename
+        const pathFileName = pathPattern;
+        
+        // Step 4: Apply the predetermined path using RouteManipulator
+        console.log(`�️ Applying predetermined path: ${pathFileName}`);
+        const fictionalRoute = await this.routeManipulator.applyPredeterminedPath(aggregatedRoute, pathFileName);
+        
+        // Step 5: Update metadata for fictional route
+        fictionalRoute.filename = `Fictional Route (${routes.length} routes) - ${pathPattern} ${elevationMode === 'actual' ? 'Elevation' : 'Cumulative'}`;
+        fictionalRoute.metadata = {
+            ...fictionalRoute.metadata,
+            name: `Fictional ${pathPattern} Route - ${routes.map(r => r.filename).join(', ')}`,
+            description: `Synthetic ${pathPattern} route preserving elevation and timing from ${routes.length} routes with ${elevationMode} elevation`,
+            aggregationMode: 'fictional',
+            elevationMode: elevationMode,
+            pathPattern: pathPattern,
+            sourceRoutes: routes.map(r => ({
+                id: r.id,
+                filename: r.filename,
+                timestamp: this.extractRouteTimestamp(r)
+            }))
         };
 
-        console.log(`✅ Fictional ${pathPattern} route created:`, {
-            filename: aggregatedRoute.filename,
-            totalPoints: aggregatedRoute.points.length,
+        console.log(`✅ Fictional ${pathPattern} route created using RouteManipulator:`, {
+            filename: fictionalRoute.filename,
+            totalPoints: fictionalRoute.points.length,
             pathPattern: pathPattern,
-            totalDistance: aggregatedRoute.distance.toFixed(1),
-            totalElevationGain: Math.round(aggregatedRoute.elevationGain),
-            sourceRoutes: aggregatedRoute.metadata.sourceRoutes.length
+            totalDistance: fictionalRoute.distance.toFixed(1),
+            totalElevationGain: Math.round(fictionalRoute.elevationGain),
+            sourceRoutes: fictionalRoute.metadata.sourceRoutes.length
         });
 
-        return aggregatedRoute;
-    }
-
-    // Generate spiral path coordinates
-    generateSpiralPath(points, elevationMode) {
-        console.log('🌀 Generating spiral path pattern...');
-        
-        // Define circle parameters for realistic mountain proportions
-        const centerLat = 0; // We'll center at origin for simplicity
-        const centerLon = 0;
-        const maxRadius = 0.4; // ~40km radius in degrees for realistic mountain scale
-        const border = maxRadius * 0.05; // 5% border around edge
-        const usableRadius = maxRadius - border;
-        
-        // First, process elevation data properly to preserve accuracy
-        let processedPoints = [];
-        
-        if (elevationMode === 'cumulative') {
-            // For cumulative mode, we need to calculate the cumulative climbing properly
-            // This should track total positive elevation change across all points
-            console.log('📈 Processing cumulative climbing across all routes...');
-            
-            let cumulativeClimbing = 0;
-            let lastElevation = null;
-            
-            for (let i = 0; i < points.length; i++) {
-                const point = points[i];
-                
-                // Track cumulative positive elevation gain
-                if (lastElevation !== null && point.elevation > lastElevation) {
-                    cumulativeClimbing += (point.elevation - lastElevation);
-                }
-                lastElevation = point.elevation;
-                
-                processedPoints.push({
-                    ...point,
-                    elevation: cumulativeClimbing, // Set elevation to cumulative climbing total
-                    originalElevation: point.elevation, // Keep original for reference
-                    progress: i / (points.length - 1) // 0 to 1
-                });
-            }
-            
-            console.log(`📊 Total cumulative climbing calculated: ${cumulativeClimbing.toFixed(1)}m`);
-            
-        } else {
-            // For actual elevation mode, just preserve the original elevations
-            for (let i = 0; i < points.length; i++) {
-                const point = points[i];
-                processedPoints.push({
-                    ...point,
-                    elevation: point.elevation, // Keep exact original elevation
-                    progress: i / (points.length - 1) // 0 to 1
-                });
-            }
-        }
-        
-        const maxElevation = Math.max(...processedPoints.map(p => p.elevation));
-        const minElevation = Math.min(...processedPoints.map(p => p.elevation));
-        const elevationRange = maxElevation - minElevation;
-        
-        console.log(`📊 Elevation range: ${minElevation.toFixed(1)}m to ${maxElevation.toFixed(1)}m (${elevationRange.toFixed(1)}m range)`);
-        
-        // Scale elevations to a normalized range of 0-10000m for dramatic spiral effect
-        // This provides good 3D visualization without being too extreme
-        const maxScaledHeight = 10000; // 10km max height for good 3D appearance
-        const elevationScale = elevationRange > 0 ? maxScaledHeight / elevationRange : 1;
-        
-        console.log(`📏 Scaling elevation by factor ${elevationScale.toFixed(4)} to dramatic range 0-${maxScaledHeight}m`);
-        
-        // Apply scaling to all processed points
-        processedPoints.forEach(point => {
-            point.scaledElevation = (point.elevation - minElevation) * elevationScale;
-            point.originalElevation = point.elevation; // Keep original for reference
-        });
-        
-        // Calculate number of spiral turns based on elevation range and route length
-        const numSpiralTurns = Math.max(2, Math.min(4, Math.floor(elevationRange / 200))); // 2-4 spiral turns
-        console.log(`🌀 Creating ${numSpiralTurns} spiral turns for elevation range of ${elevationRange.toFixed(1)}m`);
-        
-        // More points for ultra-smooth spiral curves
-        const targetPoints = Math.max(processedPoints.length, 10000); // 10k points for smooth curves
-        let interpolatedPoints = [];
-        
-        // Interpolate to get more points for smoother spiral
-        for (let i = 0; i < targetPoints; i++) {
-            const progress = i / (targetPoints - 1);
-            const sourceIndex = progress * (processedPoints.length - 1);
-            const lowerIndex = Math.floor(sourceIndex);
-            const upperIndex = Math.min(Math.ceil(sourceIndex), processedPoints.length - 1);
-            const t = sourceIndex - lowerIndex;
-            
-            const lowerPoint = processedPoints[lowerIndex];
-            const upperPoint = processedPoints[upperIndex];
-            
-            // Interpolate both original and scaled elevation
-            const originalElevation = lowerPoint.elevation + (upperPoint.elevation - lowerPoint.elevation) * t;
-            const scaledElevation = lowerPoint.scaledElevation + (upperPoint.scaledElevation - lowerPoint.scaledElevation) * t;
-            const timestamp = lowerPoint.timestamp; // Use closest timestamp
-            
-            interpolatedPoints.push({
-                elevation: originalElevation, // Keep original elevation for data integrity
-                scaledElevation: scaledElevation, // Use scaled elevation for 3D visualization
-                timestamp: timestamp,
-                progress: progress
-            });
-        }
-        
-        console.log(`🌀 Interpolated to ${interpolatedPoints.length} points for ultra-smooth spiral`);
-        
-        return interpolatedPoints.map((point, i) => {
-            const progress = point.progress;
-            const originalElevation = point.elevation; // Preserve original elevation for data integrity
-            const visualElevation = point.scaledElevation; // Use scaled elevation for realistic 3D appearance
-            
-            // Create a simple spiral that explores the full circle naturally
-            let lat, lon;
-            
-            // Number of complete spirals around the circle
-            const spiralTurns = 2.5; // 2.5 full rotations to explore different areas
-            
-            // Start angle with some randomness but not chaos
-            const baseRotation = progress * spiralTurns * 2 * Math.PI;
-            const naturalVariation = Math.sin(progress * Math.PI * 6) * 0.3 + Math.cos(progress * Math.PI * 8.5) * 0.2;
-            const finalAngle = baseRotation + naturalVariation;
-            
-            // Gradually spiral inward from outer edge to center
-            const startRadius = usableRadius * 0.9; // Start at 90% of radius
-            const endRadius = usableRadius * 0.02;  // End very close to center (2% of radius)
-            const currentRadius = startRadius - (startRadius - endRadius) * progress;
-            
-            // Add gentle radius variations for natural feel
-            const radiusVariation = Math.sin(progress * Math.PI * 4.3) * 0.1 + Math.cos(progress * Math.PI * 7.2) * 0.08;
-            const finalRadius = currentRadius * (1 + radiusVariation);
-            
-            // Calculate position
-            lat = centerLat + Math.cos(finalAngle) * finalRadius;
-            lon = centerLon + Math.sin(finalAngle) * finalRadius;
-            
-            // Ensure we stay within bounds
-            const distanceFromCenter = Math.sqrt(lat*lat + lon*lon);
-            if (distanceFromCenter > usableRadius * 0.95) {
-                const scale = (usableRadius * 0.95) / distanceFromCenter;
-                lat *= scale;
-                lon *= scale;
-            }
-            
-            return {
-                lat: lat,
-                lon: lon,
-                elevation: visualElevation,
-                originalElevation: originalElevation,
-                timestamp: point.timestamp
-            };
-        });
-    }
-
-    // Generate switchbacks path coordinates using Stelvio Pass waypoints
-    async generateSwitchbacksPath(points, elevationMode) {
-        console.log('⚡ Generating switchbacks path using Stelvio Pass waypoints...');
-        
-        // First, process elevation data properly to preserve accuracy
-        let processedPoints = [];
-        
-        if (elevationMode === 'cumulative') {
-            // For cumulative mode, we need to calculate the cumulative climbing properly
-            console.log('📈 Processing cumulative climbing across all routes...');
-            
-            let cumulativeClimbing = 0;
-            let lastElevation = null;
-            
-            for (let i = 0; i < points.length; i++) {
-                const point = points[i];
-                
-                // Track cumulative positive elevation gain
-                if (lastElevation !== null && point.elevation > lastElevation) {
-                    cumulativeClimbing += (point.elevation - lastElevation);
-                }
-                lastElevation = point.elevation;
-                
-                processedPoints.push({
-                    ...point,
-                    elevation: cumulativeClimbing, // Set elevation to cumulative climbing total
-                    originalElevation: point.elevation, // Keep original for reference
-                    progress: i / (points.length - 1) // 0 to 1
-                });
-            }
-            
-            console.log(`📊 Total cumulative climbing calculated: ${cumulativeClimbing.toFixed(1)}m`);
-            
-        } else {
-            // For actual elevation mode, just preserve the original elevations
-            for (let i = 0; i < points.length; i++) {
-                const point = points[i];
-                processedPoints.push({
-                    ...point,
-                    elevation: point.elevation, // Keep exact original elevation
-                    progress: i / (points.length - 1) // 0 to 1
-                });
-            }
-        }
-        
-        const maxElevation = Math.max(...processedPoints.map(p => p.elevation));
-        const minElevation = Math.min(...processedPoints.map(p => p.elevation));
-        const elevationRange = maxElevation - minElevation;
-        
-        console.log(`📊 Elevation range: ${minElevation.toFixed(1)}m to ${maxElevation.toFixed(1)}m (${elevationRange.toFixed(1)}m range)`);
-        
-        // Scale elevations to a realistic range relative to the 40km radius
-        // For a 40km radius mountain (80km diameter), max elevation should be ~2-4km for realistic proportions
-        // This gives a height-to-base ratio of about 1:20 to 1:10, which is realistic for mountains
-        const maxScaledHeight = Math.min(2000, elevationRange * 0.5); // Max 2km height, or scale proportionally
-        const elevationScale = elevationRange > 0 ? maxScaledHeight / elevationRange : 1;
-        
-        console.log(`📏 Scaling elevation by factor ${elevationScale.toFixed(4)} to realistic range 0-${maxScaledHeight}m (${(maxScaledHeight/40000*100).toFixed(1)}% of radius)`);
-        
-        // Apply scaling to all processed points
-        processedPoints.forEach(point => {
-            point.scaledElevation = (point.elevation - minElevation) * elevationScale;
-            point.originalElevation = point.elevation; // Keep original for reference
-        });
-        
-        // Load Stelvio Pass waypoints
-        console.log('🏔️ Loading Stelvio Pass waypoints for path coordinates...');
-        const stelvioWaypoints = await this.stelvioWaypoints.getWaypoints();
-        
-        // Use all waypoints (keeping ~2500 points as requested)
-        const pathCoordinates = stelvioWaypoints;
-        console.log(`🗺️ Using ${pathCoordinates.length} Stelvio waypoints for path coordinates`);
-        
-        // Match the path to our data points
-        const targetPoints = Math.max(processedPoints.length, pathCoordinates.length);
-        let interpolatedPoints = [];
-        
-        // Interpolate both elevation data and path coordinates to match
-        for (let i = 0; i < targetPoints; i++) {
-            const elevationProgress = i / (targetPoints - 1);
-            const pathProgress = i / (targetPoints - 1);
-            
-            // Get elevation data
-            const elevationSourceIndex = elevationProgress * (processedPoints.length - 1);
-            const elevationLowerIndex = Math.floor(elevationSourceIndex);
-            const elevationUpperIndex = Math.min(Math.ceil(elevationSourceIndex), processedPoints.length - 1);
-            const elevationT = elevationSourceIndex - elevationLowerIndex;
-            
-            const lowerPoint = processedPoints[elevationLowerIndex];
-            const upperPoint = processedPoints[elevationUpperIndex];
-            
-            // Interpolate elevation
-            const originalElevation = lowerPoint.elevation + (upperPoint.elevation - lowerPoint.elevation) * elevationT;
-            const scaledElevation = lowerPoint.scaledElevation + (upperPoint.scaledElevation - lowerPoint.scaledElevation) * elevationT;
-            
-            // Get path coordinates from Stelvio waypoints
-            const pathSourceIndex = pathProgress * (pathCoordinates.length - 1);
-            const pathLowerIndex = Math.floor(pathSourceIndex);
-            const pathUpperIndex = Math.min(Math.ceil(pathSourceIndex), pathCoordinates.length - 1);
-            const pathT = pathSourceIndex - pathLowerIndex;
-            
-            const lowerCoord = pathCoordinates[pathLowerIndex];
-            const upperCoord = pathCoordinates[pathUpperIndex];
-            
-            // Interpolate coordinates
-            const lat = lowerCoord.lat + (upperCoord.lat - lowerCoord.lat) * pathT;
-            const lon = lowerCoord.lon + (upperCoord.lon - lowerCoord.lon) * pathT;
-            
-            interpolatedPoints.push({
-                lat: lat,
-                lon: lon,
-                elevation: scaledElevation, // Use scaled elevation for visualization
-                originalElevation: originalElevation, // Keep original for data integrity
-                timestamp: lowerPoint.timestamp // Use closest timestamp
-            });
-        }
-        
-        console.log(`⚡ Generated ${interpolatedPoints.length} points using Stelvio Pass waypoints`);
-        return interpolatedPoints;
+        return fictionalRoute;
     }
 
     // Extract timestamp from route for sorting
