@@ -435,16 +435,16 @@ class RouteManipulator {
                 preservedData: ['elevation', 'timestamp', 'other_fields']
             };
             
-            // Recalculate route statistics since coordinates changed
-            const stats = this.calculateRouteStats(overlayedRoute);
-            overlayedRoute.distance = stats.distance;
-            // Keep original elevation gain/loss since we preserved elevation data
-            overlayedRoute.elevationGain = resampledRoute.elevationGain;
-            overlayedRoute.elevationLoss = resampledRoute.elevationLoss;
-            overlayedRoute.duration = resampledRoute.duration;
+            // IMPORTANT: Keep original route statistics - predetermined path only provides coordinates!
+            // The predetermined path is just a coordinate template, not real route data
+            overlayedRoute.distance = resampledRoute.distance; // Original aggregated distance
+            overlayedRoute.elevationGain = resampledRoute.elevationGain; // Original aggregated elevation gain
+            overlayedRoute.elevationLoss = resampledRoute.elevationLoss; // Original aggregated elevation loss
+            overlayedRoute.duration = resampledRoute.duration; // Original aggregated duration
             
-            console.log(`✅ Applied predetermined path: ${overlayedPoints.length} points, ${stats.distance.toFixed(1)}km distance`);
-            console.log(`📊 Preserved elevation: ${overlayedRoute.elevationGain.toFixed(1)}m gain, ${overlayedRoute.elevationLoss.toFixed(1)}m loss`);
+            console.log(`✅ Applied predetermined path: ${overlayedPoints.length} points`);
+            console.log(`📊 Preserved original stats: ${overlayedRoute.distance.toFixed(1)}km distance, ${overlayedRoute.elevationGain.toFixed(1)}m gain, ${overlayedRoute.elevationLoss.toFixed(1)}m loss`);
+            console.log(`⏱️ Preserved duration: ${(overlayedRoute.duration / 60).toFixed(1)} minutes`);
             
             return overlayedRoute;
             

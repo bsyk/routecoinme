@@ -725,24 +725,36 @@ class FileUploadHandler {
     async createFictionalRouteAggregation(routes, elevationMode, pathPattern) {
         console.log(`🎨 Creating fictional route with ${pathPattern} pattern and ${elevationMode} elevation using RouteManipulator...`);
         
+        // IMPORTANT: Preserve true aggregated statistics before applying fictional coordinates
+        const originalStats = {
+            distance: routes.reduce((acc, r) => acc + r.distance, 0),
+            elevationGain: routes.reduce((acc, r) => acc + r.elevationGain, 0),
+            elevationLoss: routes.reduce((acc, r) => acc + r.elevationLoss, 0),
+            duration: routes.reduce((acc, r) => acc + (r.duration || 0), 0),
+        };
+        console.log(`📊 Preserving true aggregated stats: ${originalStats.distance.toFixed(1)}km, ${originalStats.elevationGain.toFixed(1)}m gain`);
+        
         // Step 1: Aggregate routes using RouteManipulator (distance-based)
         let aggregatedRoute = this.routeManipulator.aggregateRoutes(routes);
         
-        // Step 2: Apply elevation mode processing
+        // Step 2: Apply elevation mode processing  
         if (elevationMode === 'cumulative') {
             aggregatedRoute = this.routeManipulator.convertToCumulativeElevation(aggregatedRoute);
         }
         
-        // Step 3: Apply the predetermined path using RouteManipulator
+        // Step 3: Apply the predetermined path using RouteManipulator (this overlays coordinates only)
         console.log(`🗺️ Applying predetermined path: ${pathPattern}`);
         let fictionalRoute = await this.routeManipulator.applyPredeterminedPath(aggregatedRoute, pathPattern);
         
-        // Step 4: Resize to fit the circle
-        aggregatedRoute = this.routeManipulator.resizeRouteToFit(aggregatedRoute);
-
-        // Step 5: Scale elevation to 10km for natural 3D visualization
+        // Step 4: Scale elevation to 10km for natural 3D visualization
         console.log(`📏 Scaling elevation for 3D visualization...`);
         fictionalRoute = this.routeManipulator.scaleElevation(fictionalRoute, 10000);
+        
+        // Step 5: Ensure true aggregated statistics are preserved (predetermined path should have done this, but double-check)
+        fictionalRoute.distance = originalStats.distance;
+        fictionalRoute.elevationGain = originalStats.elevationGain;
+        fictionalRoute.elevationLoss = originalStats.elevationLoss;
+        fictionalRoute.duration = originalStats.duration;
         
         // Step 6: Update metadata for fictional route
         fictionalRoute.filename = `Fictional Route (${routes.length} routes) - ${pathPattern} ${elevationMode === 'actual' ? 'Elevation' : 'Cumulative'}`;
