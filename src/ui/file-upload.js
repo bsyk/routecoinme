@@ -328,8 +328,8 @@ class FileUploadHandler {
         // Initialize map and add routes
         this.initializeMapVisualization();
         
-        // Don't initialize 3D viewer until user switches to 3D view
-        // this will be done lazily in show3DView()
+        // Note: No need to refresh 3D viewer here since new routes are already added via addRouteTo3DViewerIfInitialized()
+        // in the addRoute() method. This prevents double-processing of routes.
         
         this.updateRouteList();
 
@@ -982,16 +982,70 @@ class FileUploadHandler {
         }
     }
 
+    // Refresh 3D viewer with current routes (for when new routes are uploaded)
+    refresh3DViewer() {
+        if (!this.viewer3D?.isInitialized) {
+            console.warn('⚠️ Cannot refresh 3D viewer - not initialized');
+            return;
+        }
+
+        try {
+            console.log('🔄 Refreshing 3D viewer with current routes...');
+            
+            // Clear all existing routes using the proper method
+            this.viewer3D.clearAllRoutes();
+            
+            // Add back the routes that should be displayed
+            if (this.isShowingAggregated && this.aggregatedRoute) {
+                console.log(`➕ Adding aggregated route to 3D viewer: ${this.aggregatedRoute.filename}`);
+                this.viewer3D.addRoute(this.aggregatedRoute);
+            } else {
+                // Add back only selected routes
+                this.uploadedRoutes.forEach(route => {
+                    if (this.selectedRoutes.has(route.id)) {
+                        console.log(`➕ Adding selected route to 3D viewer: ${route.filename}`);
+                        this.viewer3D.addRoute(route);
+                    }
+                });
+            }
+            
+            // After adding routes, make sure camera is positioned to show all routes
+            if (this.viewer3D.fitToView) {
+                console.log('📷 Repositioning camera to fit all routes...');
+                this.viewer3D.fitToView();
+            }
+            
+            console.log('✅ 3D viewer refreshed successfully');
+        } catch (error) {
+            console.error('❌ Failed to refresh 3D viewer:', error);
+        }
+    }
+
     // Add a route to 3D viewer if it's initialized (for newly uploaded routes)
     addRouteTo3DViewerIfInitialized(route) {
-        if (this.is3DInitialized && this.viewer3D && this.viewer3D.isInitialized) {
-            // Only add if route is selected for display and we're not showing aggregated route
-            if (!this.isShowingAggregated && this.selectedRoutes.has(route.id)) {
-                console.log(`➕ Adding new selected route to initialized 3D viewer: ${route.filename}`);
+        // Only proceed if we're in 3D view mode and viewer is initialized
+        if (this.currentViewMode !== '3d' || !this.is3DInitialized || !this.viewer3D?.isInitialized) {
+            console.log(`📝 3D viewer not active/initialized, route will be added when 3D view is accessed: ${route.filename}`);
+            return;
+        }
+
+        // Only add if route is selected for display and we're not showing aggregated route
+        if (!this.isShowingAggregated && this.selectedRoutes.has(route.id)) {
+            console.log(`➕ Adding new selected route to initialized 3D viewer: ${route.filename}`);
+            
+            try {
                 this.viewer3D.addRoute(route);
+                
+                // Ensure camera is positioned to show the new route
+                if (this.viewer3D.fitToView) {
+                    console.log('📷 Repositioning camera to show newly added route...');
+                    this.viewer3D.fitToView();
+                }
+                
+                console.log(`✅ Successfully added route to 3D viewer: ${route.filename}`);
+            } catch (error) {
+                console.error(`❌ Failed to add route to 3D viewer: ${route.filename}`, error);
             }
-        } else {
-            console.log(`📝 3D viewer not initialized, route will be added when 3D view is accessed: ${route.filename}`);
         }
     }
 
@@ -1319,6 +1373,7 @@ class FileUploadHandler {
 
         // Add to 3D viewer if initialized
         if (this.is3DInitialized && this.viewer3D) {
+            console.log(`➕ Adding route to 3D viewer via showRoute: ${route.filename}`);
             this.viewer3D.addRoute(route);
         }
     }
@@ -1437,11 +1492,11 @@ class FileUploadHandler {
     }
         
     // Switch view mode (unified method for HTML onclick handlers)
-    switchViewMode(mode) {
+    async switchViewMode(mode) {
         if (mode === 'map') {
             this.showMapView();
         } else if (mode === '3d') {
-            this.show3DView();
+            await this.show3DView();
         }
         this.currentViewMode = mode;
     }
@@ -1472,7 +1527,7 @@ class FileUploadHandler {
     }
 
     // Switch to 3D view
-    show3DView() {
+    async show3DView() {
         const mapContainer = document.getElementById('map-container');
         const viewer3DContainer = document.getElementById('viewer-3d-container');
         const mapBtn = document.querySelector('.viewer-toggle-btn:nth-child(1)');
@@ -1488,22 +1543,62 @@ class FileUploadHandler {
             // Initialize 3D viewer if not already done (lazy initialization)
             if (!this.is3DInitialized) {
                 console.log('🚀 Lazy initializing 3D viewer...');
-                setTimeout(() => {
+                
+                try {
+                    // Wait for the container to be visible before initializing
+                    await this.waitForElementVisible(viewer3DContainer);
+                    
                     this.initialize3DVisualization();
                     this.is3DInitialized = true;
-                }, 100);
+                    
+                    console.log('✅ 3D viewer initialization complete');
+                } catch (error) {
+                    console.error('❌ Failed to initialize 3D viewer:', error);
+                }
             } else {
-                // Resize 3D viewer after showing if already initialized
-                setTimeout(() => {
-                    if (this.viewer3D) {
-                        const rect = viewer3DContainer.getBoundingClientRect();
-                        this.viewer3D.resize(rect.width, rect.height);
-                    }
-                }, 100);
+                // 3D viewer already initialized - refresh it with current routes
+                console.log('🔄 Refreshing existing 3D viewer with current routes...');
+                
+                if (this.viewer3D?.isInitialized) {
+                    // Resize viewer first
+                    const rect = viewer3DContainer.getBoundingClientRect();
+                    this.viewer3D.resize(rect.width, rect.height);
+                    
+                    // Refresh with current routes (this handles routes added while in map view)
+                    this.refresh3DViewer();
+                }
             }
         }
 
         console.log('🎮 Switched to 3D view');
+    }
+
+    // Wait for an element to be visible (has dimensions)
+    async waitForElementVisible(element, maxWaitMs = 1000) {
+        return new Promise((resolve, reject) => {
+            const startTime = Date.now();
+            
+            const checkVisible = () => {
+                const rect = element.getBoundingClientRect();
+                
+                if (rect.width > 0 && rect.height > 0) {
+                    console.log(`✅ Element visible: ${rect.width}x${rect.height}`);
+                    resolve(rect);
+                    return;
+                }
+                
+                const elapsed = Date.now() - startTime;
+                if (elapsed >= maxWaitMs) {
+                    reject(new Error(`Element did not become visible within ${maxWaitMs}ms`));
+                    return;
+                }
+                
+                // Use requestAnimationFrame for better timing than setTimeout
+                requestAnimationFrame(checkVisible);
+            };
+            
+            checkVisible();
+        });
     }
 
     // Toggle 3D controls visibility
