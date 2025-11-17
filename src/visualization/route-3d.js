@@ -455,8 +455,9 @@ class Route3DVisualization {
 
         this.routeMeshes.push(meshData);
         
-        // Update scene elements to match new bounds
-        this.setupScene();
+        // For new route additions while other routes exist, we need to update the scene
+        // but we should do it efficiently to avoid visual conflicts
+        this.updateSceneForNewRoute();
         
         // Position camera to show all routes
         this.positionCameraToFitRoutes();
@@ -465,6 +466,48 @@ class Route3DVisualization {
         console.log(`📍 Camera position:`, this.camera.position);
 
         return true;
+    }
+
+    // Update scene background efficiently when adding new routes
+    updateSceneForNewRoute() {
+        this.updateSceneBackground();
+    }
+
+    // Update scene background based on current routes (for both adding and removing routes)
+    updateSceneBackground() {
+        // Calculate new circle radius based on current bounding box
+        this.recalculateBoundingBox();
+        
+        let newCircleRadius = 5000; // Default large radius
+        
+        if (this.boundingBox.minX !== Infinity && this.routeMeshes.length > 0) {
+            const sizeX = this.boundingBox.maxX - this.boundingBox.minX;
+            const sizeZ = this.boundingBox.maxZ - this.boundingBox.minZ;
+            const maxRouteSize = Math.max(sizeX, sizeZ);
+            newCircleRadius = Math.max(maxRouteSize * 0.7, 2000);
+        }
+        
+        // Check if existing background elements exist and their current size
+        const existingCircle = this.scene.getObjectByName('circular-ground');
+        
+        if (!existingCircle) {
+            // No existing background, create fresh scene
+            this.setupScene();
+            return;
+        }
+        
+        // Check if the current background size is significantly different
+        const currentRadius = existingCircle.geometry.parameters.radius;
+        const radiusDifference = Math.abs(newCircleRadius - currentRadius) / currentRadius;
+        
+        if (radiusDifference > 0.2) {
+            // Background size differs significantly (>20%), rebuild scene
+            console.log(`📐 Updating scene background from ${currentRadius.toFixed(0)} to ${newCircleRadius.toFixed(0)} units`);
+            this.setupScene();
+        } else {
+            // Current background is adequate, no need to rebuild
+            console.log(`📐 Current scene background (${currentRadius.toFixed(0)} units) is adequate`);
+        }
     }
 
     // Position camera to show all routes in view
@@ -709,10 +752,13 @@ class Route3DVisualization {
         // Remove from array
         this.routeMeshes.splice(meshIndex, 1);
 
-        // Recalculate bounding box
-        this.recalculateBoundingBox();
-        this.centerCamera();
+        // Update scene background to potentially shrink the circle
+        this.updateSceneBackground();
+        
+        // Position camera to show remaining routes
+        this.positionCameraToFitRoutes();
 
+        console.log(`🗑️ Removed route from 3D scene: ${routeId}`);
         return true;
     }
 
