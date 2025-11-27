@@ -149,32 +149,20 @@ class FileUploadHandler {
             console.log(`🎯 Handling UI update for: ${changeType}`);
             
             switch (changeType) {
-                case 'route-added':
-                    this.handleRouteAdded(data.route);
+                case 'loading-started':
+                    this.handleLoadingStarted(data);
                     break;
                     
-                case 'route-removed':
-                    this.handleRouteRemoved(data.routeId);
+                case 'loading-finished':
+                    this.handleLoadingFinished(data);
                     break;
                     
-                case 'route-visibility-changed':
-                    this.handleRouteVisibilityChanged(data.routeId, data.visible);
-                    break;
-                    
-                case 'aggregated-route-created':
-                    this.handleAggregatedRouteCreated(data.route);
-                    break;
-                    
-                case 'aggregated-route-visibility-changed':
-                    this.handleAggregatedRouteVisibilityChanged(data.visible);
-                    break;
-                    
-                case 'aggregated-route-removed':
-                    this.handleAggregatedRouteRemoved(data.restoredRoutes);
+                case 'selected-routes-changed':
+                    this.handleSelectedRoutesChanged(data);
                     break;
                     
                 case 'batch-complete':
-                    this.refreshAllVisualizationsAndUI();
+                    this.handleBatchComplete(data);
                     break;
                     
                 default:
@@ -192,132 +180,29 @@ class FileUploadHandler {
     }
 
     // Specific change handlers
-    handleRouteAdded(route) {
-        console.log(`🎯 Handling route added: ${route.filename}`);
+    handleLoadingStarted(data) {
+        console.log('⏳ Loading started - showing loading state');
+        this.showLoadingState();
+    }
+
+    handleLoadingFinished(data) {
+        console.log('✅ Loading finished - hiding loading state and ensuring routes UI');
+        this.hideLoadingState();
         
-        // Switch to routes UI if this is the first route
-        if (this.uploadedRoutes.length === 1) {
+        // Switch to routes UI if we have routes
+        if (this.uploadedRoutes.length > 0) {
             this.showRoutesUI();
-            // Ensure map is initialized when switching to routes UI
+            // Ensure map is initialized and routes are added when transitioning to routes UI
             this.initializeMapVisualization();
         }
         
-        // Add to visualizations if selected
-        if (this.selectedRoutes.has(route.id)) {
-            // Add to map only if it's initialized
-            if (this.mapViz?.map) {
-                console.log(`🗺️ Adding route to map: ${route.filename}`);
-                this.mapViz.addRoute(route);
-            } else {
-                console.log(`⚠️ Map not initialized, route will be added when map initializes: ${route.filename}`);
-            }
-            
-            // Add to 3D viewer if it's active and initialized
-            if (this.currentViewMode === '3d' && this.is3DInitialized && this.viewer3D?.isInitialized) {
-                console.log(`🎮 Adding route to active 3D viewer: ${route.filename}`);
-                try {
-                    this.viewer3D.addRoute(route);
-                    console.log(`✅ Route successfully added to 3D viewer: ${route.filename}`);
-                } catch (error) {
-                    console.error(`❌ Failed to add route to 3D viewer:`, error);
-                }
-            }
-        }
-        
-        // Update UI elements (stats and route list)
-        this.updateStatsDisplay();
-        this.updateRouteList();
-    }
-
-    handleRouteRemoved(routeId) {
-        // Remove from visualizations
-        this.mapViz.removeRoute(routeId);
-        if (this.is3DInitialized && this.viewer3D) {
-            this.viewer3D.removeRoute(routeId);
-        }
-        
-        // Update UI
+        // Update route list and stats display (important for loaded routes from storage)
         this.updateRouteList();
         this.updateStatsDisplay();
     }
 
-    handleRouteVisibilityChanged(routeId, visible) {
-        const route = this.uploadedRoutes.find(r => r.id === routeId);
-        if (!route) return;
-
-        if (visible) {
-            // Add to map only if it's initialized
-            if (this.mapViz?.map) {
-                this.mapViz.addRoute(route);
-            } else {
-                console.warn(`⚠️ Map not initialized, cannot add route: ${route.filename}`);
-            }
-            
-            if (this.is3DInitialized && this.viewer3D) {
-                this.viewer3D.addRoute(route);
-            }
-        } else {
-            // Remove from visualizations
-            if (this.mapViz?.map) {
-                this.mapViz.removeRoute(routeId);
-            }
-            
-            if (this.is3DInitialized && this.viewer3D) {
-                this.viewer3D.removeRoute(routeId);
-            }
-        }
-        
-        // Update route list styling
-        this.updateRouteList();
-    }
-
-    handleAggregatedRouteCreated(route) {
-        // Show aggregated route
-        this.mapViz.addRoute(route);
-        if (this.is3DInitialized && this.viewer3D) {
-            this.viewer3D.addRoute(route);
-        }
-        
-        // Update UI
-        this.updateRouteList();
-        this.updateStatsDisplay();
-    }
-
-    handleAggregatedRouteVisibilityChanged(visible) {
-        if (!this.aggregatedRoute) return;
-
-        if (visible) {
-            this.mapViz.addRoute(this.aggregatedRoute);
-            if (this.is3DInitialized && this.viewer3D) {
-                this.viewer3D.addRoute(this.aggregatedRoute);
-            }
-        } else {
-            this.mapViz.removeRoute(this.aggregatedRoute.id);
-            if (this.is3DInitialized && this.viewer3D) {
-                this.viewer3D.removeRoute(this.aggregatedRoute.id);
-            }
-        }
-    }
-
-    handleAggregatedRouteRemoved(restoredRoutes) {
-        // Update UI
-        this.updateRouteList();
-        this.updateStatsDisplay();
-    }
-
-    refreshAllVisualizationsAndUI() {
-        console.log('🔄 Refreshing all visualizations and UI...');
-        
-        // Hide loading state
-        this.hideLoadingState();
-        
-        // Switch to routes UI if we have routes and not already there
-        if (this.uploadedRoutes.length > 0) {
-            const routeVisualizationArea = document.getElementById('route-visualization-area');
-            if (routeVisualizationArea && routeVisualizationArea.style.display === 'none') {
-                this.showRoutesUI();
-            }
-        }
+    handleBatchComplete(data) {
+        console.log('🔄 Batch complete - refreshing visualizations');
         
         // Update the dynamic parts
         this.updateStatsDisplay();
@@ -328,6 +213,79 @@ class FileUploadHandler {
             console.log('🎮 Refreshing 3D viewer for batch completion...');
             this.refresh3DViewer();
         }
+    }
+
+    // UNIFIED HANDLER: Handle any change to what routes are selected/visible
+    handleSelectedRoutesChanged(data) {
+        console.log('� Selected routes changed - redrawing all visualizations');
+        
+        // Clear ALL routes from visualizations first
+        this.clearAllVisualizationsRoutes();
+        
+        // Add routes that should be visible
+        if (this.isShowingAggregated && this.aggregatedRoute) {
+            // Show only aggregated route
+            console.log('➕ Adding aggregated route to visualizations');
+            this.addRouteToAllVisualizations(this.aggregatedRoute);
+        } else {
+            // Show selected individual routes
+            console.log(`➕ Adding ${this.selectedRoutes.size} selected routes to visualizations`);
+            this.uploadedRoutes.forEach(route => {
+                if (this.selectedRoutes.has(route.id)) {
+                    this.addRouteToAllVisualizations(route);
+                }
+            });
+        }
+        
+        // Update UI elements
+        this.updateRouteList();
+        this.updateStatsDisplay();
+    }
+
+    // Helper: Clear all routes from all visualizations
+    clearAllVisualizationsRoutes() {
+        // Clear map
+        if (this.mapViz?.map) {
+            this.uploadedRoutes.forEach(route => {
+                this.mapViz.removeRoute(route.id);
+            });
+            if (this.aggregatedRoute) {
+                this.mapViz.removeRoute(this.aggregatedRoute.id);
+            }
+        }
+        
+        // Clear 3D viewer
+        if (this.is3DInitialized && this.viewer3D) {
+            this.uploadedRoutes.forEach(route => {
+                this.viewer3D.removeRoute(route.id);
+            });
+            if (this.aggregatedRoute) {
+                this.viewer3D.removeRoute(this.aggregatedRoute.id);
+            }
+        }
+    }
+
+    // Helper: Add route to all visualizations
+    addRouteToAllVisualizations(route) {
+        // Add to map
+        if (this.mapViz?.map) {
+            this.mapViz.addRoute(route);
+        }
+        
+        // Add to 3D viewer if it's active and initialized
+        if (this.currentViewMode === '3d' && this.is3DInitialized && this.viewer3D?.isInitialized) {
+            try {
+                this.viewer3D.addRoute(route);
+            } catch (error) {
+                console.error(`❌ Failed to add route to 3D viewer:`, error);
+            }
+        }
+    }
+
+    // Legacy method - now delegated to event system
+    refreshAllVisualizationsAndUI() {
+        console.log('🔄 Legacy refresh method - delegating to batch-complete event...');
+        this.notifyStateChange('batch-complete');
     }
 
     // Show the appropriate initial UI state
@@ -549,8 +507,8 @@ class FileUploadHandler {
         const fileArray = Array.from(files);
         console.log(`📁 Processing ${fileArray.length} GPX file(s)...`);
 
-        // Show loading state
-        this.showLoadingState();
+        // Notify loading started
+        this.notifyStateChange('loading-started', { fileCount: fileArray.length });
 
         const results = {
             successful: [],
@@ -577,7 +535,10 @@ class FileUploadHandler {
 
         await this.saveRoutesToStorage();
         
-        // Show upload results
+        // Notify loading finished
+        this.notifyStateChange('loading-finished', { results });
+        
+        // Show upload results if there were failures
         if (results.failed.length > 0) {
             this.showUploadResults(results);
         }
@@ -601,8 +562,8 @@ class FileUploadHandler {
 
         console.log(`✅ Added route: ${routeData.filename}`);
         
-        // Single notification - all UI updates happen automatically
-        this.notifyStateChange('route-added', { route: routeData });
+        // Single notification - UI updates happen automatically
+        this.notifyStateChange('selected-routes-changed', { reason: 'route-added' });
     }
 
     // Generate unique route ID
@@ -645,31 +606,10 @@ class FileUploadHandler {
         console.log('✅ Loading state hidden');
     }
 
-    // Update UI after file upload
+    // Update UI after file upload (legacy method - now delegated to events)
     updateUIAfterUpload(results) {
-        console.log('🔄 Updating UI stats after upload...');
-        
-        // Hide loading state
-        this.hideLoadingState();
-        
-        // Switch to routes UI if we have routes
-        if (this.uploadedRoutes.length > 0) {
-            this.showRoutesUI();
-            
-            // Ensure map is initialized and routes are added
-            this.initializeMapVisualization();
-        }
-        
-        // Update stats and route list
-        this.updateStatsDisplay();
-        this.updateRouteList();
-
-        // Show results summary if there were failures
-        if (results.failed && results.failed.length > 0) {
-            this.showUploadResults(results);
-        }
-        
-        console.log('✅ UI updated without DOM restructuring');
+        console.log('🔄 Legacy updateUIAfterUpload - delegating to loading-finished event...');
+        this.notifyStateChange('loading-finished', { results });
     }
 
     // Show upload results (especially errors)
@@ -867,7 +807,7 @@ class FileUploadHandler {
             this.isShowingAggregated = true;
 
             // Single notification for aggregation creation
-            this.notifyStateChange('aggregated-route-created', { route: this.aggregatedRoute });
+            this.notifyStateChange('selected-routes-changed', { reason: 'aggregated-route-created' });
 
             console.log(`✅ Created aggregated route: ${this.aggregatedRoute.filename}`);
             
@@ -1174,7 +1114,7 @@ class FileUploadHandler {
         }
 
         // Clear 3D visualization
-        if (this.viewer3D) {
+        if (this.viewer3D && this.viewer3D.isInitialized) {
             this.viewer3D.clearAllRoutes();
         }
         
@@ -1206,8 +1146,10 @@ class FileUploadHandler {
                 });
                 console.log(`✅ Auto-selected ${this.selectedRoutes.size} routes for display`);
                 
-                console.log('🔄 Calling updateUIAfterUpload to initialize viewers...');
-                this.updateUIAfterUpload({ successful: this.uploadedRoutes, failed: [] });
+                // Notify that loading finished with existing routes
+                this.notifyStateChange('loading-finished', { 
+                    results: { successful: this.uploadedRoutes, failed: [] } 
+                });
             } else {
                 console.log('📭 No routes found in storage');
             }
@@ -1681,18 +1623,18 @@ class FileUploadHandler {
         if (routeId === this.aggregatedRoute?.id) {
             // Handle aggregated route visibility
             this.isShowingAggregated = isChecked;
-            this.notifyStateChange('aggregated-route-visibility-changed', { visible: isChecked });
-            return;
-        }
-
-        // Handle individual route visibility
-        if (isChecked) {
-            this.selectedRoutes.add(routeId);
         } else {
-            this.selectedRoutes.delete(routeId);
+            // Handle individual route visibility
+            if (isChecked) {
+                this.selectedRoutes.add(routeId);
+            } else {
+                this.selectedRoutes.delete(routeId);
+            }
         }
 
-        this.notifyStateChange('route-visibility-changed', { 
+        // Single unified notification
+        this.notifyStateChange('selected-routes-changed', { 
+            reason: 'visibility-toggled',
             routeId, 
             visible: isChecked 
         });
@@ -1700,56 +1642,28 @@ class FileUploadHandler {
         console.log(`👁️ Route ${routeId} visibility: ${isChecked ? 'shown' : 'hidden'}`);
     }
 
-    // Show a specific route
+    // Show a specific route (legacy method - use unified approach)
     showRoute(routeId) {
-        const route = this.uploadedRoutes.find(r => r.id === routeId);
-        if (!route) return;
-
-        // Add to map
-        this.mapViz.addRoute(route);
-
-        // Add to 3D viewer if initialized
-        if (this.is3DInitialized && this.viewer3D) {
-            console.log(`➕ Adding route to 3D viewer via showRoute: ${route.filename}`);
-            this.viewer3D.addRoute(route);
-        }
+        this.selectedRoutes.add(routeId);
+        this.notifyStateChange('selected-routes-changed', { reason: 'show-route', routeId });
     }
 
-    // Hide a specific route
+    // Hide a specific route (legacy method - use unified approach)  
     hideRoute(routeId) {
-        // Remove from map
-        this.mapViz.removeRoute(routeId);
-
-        // Remove from 3D viewer if initialized
-        if (this.is3DInitialized && this.viewer3D) {
-            this.viewer3D.removeRoute(routeId);
-        }
+        this.selectedRoutes.delete(routeId);
+        this.notifyStateChange('selected-routes-changed', { reason: 'hide-route', routeId });
     }
 
-    // Show aggregated route
+    // Show aggregated route (legacy method - use unified approach)
     showAggregatedRoute() {
-        if (!this.aggregatedRoute) return;
-
-        // Add to map
-        this.mapViz.addRoute(this.aggregatedRoute);
-
-        // Add to 3D viewer if initialized
-        if (this.is3DInitialized && this.viewer3D) {
-            this.viewer3D.addRoute(this.aggregatedRoute);
-        }
+        this.isShowingAggregated = true;
+        this.notifyStateChange('selected-routes-changed', { reason: 'show-aggregated' });
     }
 
-    // Hide aggregated route
+    // Hide aggregated route (legacy method - use unified approach) 
     hideAggregatedRoute() {
-        if (!this.aggregatedRoute) return;
-
-        // Remove from map
-        this.mapViz.removeRoute(this.aggregatedRoute.id);
-
-        // Remove from 3D viewer if initialized
-        if (this.is3DInitialized && this.viewer3D) {
-            this.viewer3D.removeRoute(this.aggregatedRoute.id);
-        }
+        this.isShowingAggregated = false;
+        this.notifyStateChange('selected-routes-changed', { reason: 'hide-aggregated' });
     }
 
     // Remove aggregated route completely
@@ -1772,7 +1686,7 @@ class FileUploadHandler {
         });
 
         // Single notification with restored routes info
-        this.notifyStateChange('aggregated-route-removed', { restoredRoutes: sourceRouteIds });
+        this.notifyStateChange('selected-routes-changed', { reason: 'aggregated-route-removed' });
         
         console.log(`🗑️ Aggregated route removed, restored ${sourceRouteIds.length} individual routes`);
     }
