@@ -22,6 +22,13 @@ class FileUploadHandler {
         this.isShowingAggregated = false; // Track if we're showing aggregated route
         this.currentViewMode = 'map'; // 'map' or '3d'
         this.is3DInitialized = false; // Track if 3D viewer has been initialized
+        
+        // State management system
+        this.stateListeners = new Set();
+        this.deferredUpdates = false;
+        this.notificationInProgress = false;
+        this.notificationQueue = []; // Queue for pending notifications
+        
         this.init();
     }
 
@@ -30,7 +37,240 @@ class FileUploadHandler {
         this.setupDropZone();
         this.setupViewToggleButtons();
         await this.initializeStorage();
+        
+        // Set up centralized state listener
+        this.setupStateListener();
+        
         await this.loadStoredRoutes();
+    }
+
+    // Add state change listeners
+    addStateListener(listenerFn) {
+        this.stateListeners.add(listenerFn);
+        return () => this.stateListeners.delete(listenerFn); // Return cleanup function
+    }
+
+    // Smart notification system with queueing
+    notifyStateChange(changeType = 'state-changed', data = {}) {
+        // Skip during deferred updates
+        if (this.deferredUpdates) return;
+
+        // If notification is in progress, queue this one
+        if (this.notificationInProgress) {
+            console.log(`📋 Queuing notification: ${changeType}`);
+            this.notificationQueue.push({ changeType, data });
+            return;
+        }
+
+        // Process this notification immediately
+        this.processNotification(changeType, data);
+        
+        // Process any queued notifications
+        this.processQueuedNotifications();
+    }
+
+    // Process a single notification
+    processNotification(changeType, data) {
+        console.log(`🔔 Processing state change: ${changeType}`, data);
+        
+        // Set notification lock
+        this.notificationInProgress = true;
+        
+        try {
+            this.stateListeners.forEach(listener => {
+                try {
+                    listener(changeType, data, this);
+                } catch (error) {
+                    console.error('❌ State listener error:', error);
+                }
+            });
+        } finally {
+            // Always release the lock
+            this.notificationInProgress = false;
+        }
+    }
+
+    // Process all queued notifications
+    processQueuedNotifications() {
+        while (this.notificationQueue.length > 0 && !this.notificationInProgress) {
+            const { changeType, data } = this.notificationQueue.shift();
+            console.log(`📤 Processing queued notification: ${changeType}`);
+            this.processNotification(changeType, data);
+        }
+    }
+
+    // Batch multiple state changes
+    withDeferredUpdates(fn) {
+        this.deferredUpdates = true;
+        try {
+            fn();
+        } finally {
+            this.deferredUpdates = false;
+            
+            // Process the batch completion and any queued notifications
+            this.notifyStateChange('batch-complete');
+        }
+    }
+
+    // Clear notification queue (useful for debugging/testing)
+    clearNotificationQueue() {
+        const queueLength = this.notificationQueue.length;
+        this.notificationQueue = [];
+        console.log(`🗑️ Cleared ${queueLength} queued notifications`);
+        return queueLength;
+    }
+
+    // Get current queue status (for debugging)
+    getNotificationQueueStatus() {
+        return {
+            inProgress: this.notificationInProgress,
+            queueLength: this.notificationQueue.length,
+            deferredMode: this.deferredUpdates,
+            queuedItems: this.notificationQueue.map(item => item.changeType)
+        };
+    }
+
+    // Debug queue status (accessible via console: window.fileUploader.debugNotifications())
+    debugNotifications() {
+        const status = this.getNotificationQueueStatus();
+        console.log('📊 Notification System Status:', status);
+        return status;
+    }
+
+    // Centralized state listener
+    setupStateListener() {
+        this.addStateListener((changeType, data, fileHandler) => {
+            console.log(`🎯 Handling UI update for: ${changeType}`);
+            
+            switch (changeType) {
+                case 'route-added':
+                    this.handleRouteAdded(data.route);
+                    break;
+                    
+                case 'route-removed':
+                    this.handleRouteRemoved(data.routeId);
+                    break;
+                    
+                case 'route-visibility-changed':
+                    this.handleRouteVisibilityChanged(data.routeId, data.visible);
+                    break;
+                    
+                case 'aggregated-route-created':
+                    this.handleAggregatedRouteCreated(data.route);
+                    break;
+                    
+                case 'aggregated-route-visibility-changed':
+                    this.handleAggregatedRouteVisibilityChanged(data.visible);
+                    break;
+                    
+                case 'aggregated-route-removed':
+                    this.handleAggregatedRouteRemoved(data.restoredRoutes);
+                    break;
+                    
+                case 'batch-complete':
+                    this.refreshAllVisualizationsAndUI();
+                    break;
+                    
+                default:
+                    // For simple state changes, just refresh the UI
+                    this.updateRouteList();
+                    this.updateStatsDisplay();
+            }
+        });
+    }
+
+    // Specific change handlers
+    handleRouteAdded(route) {
+        // Add to visualizations if selected
+        if (this.selectedRoutes.has(route.id)) {
+            this.mapViz.addRoute(route);
+            this.addRouteTo3DViewerIfInitialized(route);
+        }
+        
+        // Update UI
+        this.updateRouteList();
+        this.updateStatsDisplay();
+    }
+
+    handleRouteRemoved(routeId) {
+        // Remove from visualizations
+        this.mapViz.removeRoute(routeId);
+        if (this.is3DInitialized && this.viewer3D) {
+            this.viewer3D.removeRoute(routeId);
+        }
+        
+        // Update UI
+        this.updateRouteList();
+        this.updateStatsDisplay();
+    }
+
+    handleRouteVisibilityChanged(routeId, visible) {
+        const route = this.uploadedRoutes.find(r => r.id === routeId);
+        if (!route) return;
+
+        if (visible) {
+            this.mapViz.addRoute(route);
+            if (this.is3DInitialized && this.viewer3D) {
+                this.viewer3D.addRoute(route);
+            }
+        } else {
+            this.mapViz.removeRoute(routeId);
+            if (this.is3DInitialized && this.viewer3D) {
+                this.viewer3D.removeRoute(routeId);
+            }
+        }
+        
+        // Update route list styling
+        this.updateRouteList();
+    }
+
+    handleAggregatedRouteCreated(route) {
+        // Show aggregated route
+        this.mapViz.addRoute(route);
+        if (this.is3DInitialized && this.viewer3D) {
+            this.viewer3D.addRoute(route);
+        }
+        
+        // Update UI
+        this.updateRouteList();
+        this.updateStatsDisplay();
+    }
+
+    handleAggregatedRouteVisibilityChanged(visible) {
+        if (!this.aggregatedRoute) return;
+
+        if (visible) {
+            this.mapViz.addRoute(this.aggregatedRoute);
+            if (this.is3DInitialized && this.viewer3D) {
+                this.viewer3D.addRoute(this.aggregatedRoute);
+            }
+        } else {
+            this.mapViz.removeRoute(this.aggregatedRoute.id);
+            if (this.is3DInitialized && this.viewer3D) {
+                this.viewer3D.removeRoute(this.aggregatedRoute.id);
+            }
+        }
+    }
+
+    handleAggregatedRouteRemoved(restoredRoutes) {
+        // Update UI
+        this.updateRouteList();
+        this.updateStatsDisplay();
+    }
+
+    refreshAllVisualizationsAndUI() {
+        console.log('🔄 Refreshing all visualizations and UI...');
+        
+        // Update UI elements
+        this.updateUIAfterUpload({ 
+            successful: this.uploadedRoutes, 
+            failed: [] 
+        });
+        
+        // Refresh 3D if needed
+        if (this.is3DInitialized) {
+            this.refresh3DViewer();
+        }
     }
 
     // Initialize storage manager
@@ -159,11 +399,10 @@ class FileUploadHandler {
             failed: []
         };
 
-        // Process files sequentially to avoid overwhelming the UI
+        // Process files sequentially first, then use batched updates
         for (const file of fileArray) {
             try {
                 const routeData = await this.parser.parseGPXFile(file);
-                this.addRoute(routeData);
                 results.successful.push(routeData);
             } catch (error) {
                 console.error(`Failed to process ${file.name}:`, error);
@@ -171,11 +410,19 @@ class FileUploadHandler {
             }
         }
 
-        // Update UI with results
-        this.updateUIAfterUpload(results);
-        
-        console.log(`🔄 About to save ${this.uploadedRoutes.length} routes to storage...`);
+        // Use batched updates to add all successful routes at once
+        this.withDeferredUpdates(() => {
+            results.successful.forEach(routeData => {
+                this.addRoute(routeData); // State changes are deferred
+            });
+        }); // All UI updates happen here in one batch
+
         await this.saveRoutesToStorage();
+        
+        // Show upload results
+        if (results.failed.length > 0) {
+            this.showUploadResults(results);
+        }
     }
 
     // Add route to collection
@@ -196,8 +443,8 @@ class FileUploadHandler {
 
         console.log(`✅ Added route: ${routeData.filename}`);
         
-        // Add to 3D viewer if it's already initialized and route is selected
-        this.addRouteTo3DViewerIfInitialized(routeData);
+        // Single notification - all UI updates happen automatically
+        this.notifyStateChange('route-added', { route: routeData });
     }
 
     // Generate unique route ID
@@ -529,21 +776,15 @@ class FileUploadHandler {
                 pathPattern
             );
             
-            // Unselect all individual routes (but keep them in the list)
+            // Clear individual route selections
             this.selectedRoutes.clear();
-            this.uploadedRoutes.forEach(route => {
-                this.hideRoute(route.id);
-            });
-
-            // Show only the aggregated route
             this.isShowingAggregated = true;
-            this.showAggregatedRoute();
 
-            // Update UI
-            this.updateRouteList();
-            this.updateStatsDisplay();
+            // Single notification for aggregation creation
+            this.notifyStateChange('aggregated-route-created', { route: this.aggregatedRoute });
 
             console.log(`✅ Created aggregated route: ${this.aggregatedRoute.filename}`);
+            
             let modeDescription;
             if (aggregationMode === 'fictional') {
                 modeDescription = `fictional ${pathPattern}`;
@@ -1305,14 +1546,6 @@ class FileUploadHandler {
         // Remove from selected routes
         this.selectedRoutes.delete(routeId);
         
-        // Remove from map
-        this.mapViz.removeRoute(routeId);
-        
-        // Remove from 3D viewer if initialized
-        if (this.is3DInitialized && this.viewer3D) {
-            this.viewer3D.removeRoute(routeId);
-        }
-        
         // Remove from storage
         try {
             if (this.storageManager) {
@@ -1325,11 +1558,8 @@ class FileUploadHandler {
         // Save updated routes to storage
         await this.saveRoutesToStorage();
         
-        // Update UI
-        this.updateRouteList();
-        
-        // Update stats
-        this.updateStatsDisplay();
+        // Single notification - all UI updates happen automatically
+        this.notifyStateChange('route-removed', { routeId });
         
         console.log(`🗑️ Route removed: ${routeId}`);
     }
@@ -1341,25 +1571,23 @@ class FileUploadHandler {
 
         if (routeId === this.aggregatedRoute?.id) {
             // Handle aggregated route visibility
-            if (isChecked) {
-                this.showAggregatedRoute();
-            } else {
-                this.hideAggregatedRoute();
-            }
+            this.isShowingAggregated = isChecked;
+            this.notifyStateChange('aggregated-route-visibility-changed', { visible: isChecked });
             return;
         }
 
         // Handle individual route visibility
         if (isChecked) {
             this.selectedRoutes.add(routeId);
-            this.showRoute(routeId);
         } else {
             this.selectedRoutes.delete(routeId);
-            this.hideRoute(routeId);
         }
 
-        // Update route list styling
-        this.updateRouteList();
+        this.notifyStateChange('route-visibility-changed', { 
+            routeId, 
+            visible: isChecked 
+        });
+        
         console.log(`👁️ Route ${routeId} visibility: ${isChecked ? 'shown' : 'hidden'}`);
     }
 
@@ -1419,9 +1647,6 @@ class FileUploadHandler {
     removeAggregatedRoute() {
         if (!this.aggregatedRoute) return;
 
-        // Hide the aggregated route first
-        this.hideAggregatedRoute();
-        
         // Remember which routes were used for aggregation
         const sourceRouteIds = this.aggregatedRoute.metadata?.sourceRoutes?.map(r => r.id) || [];
         
@@ -1434,12 +1659,12 @@ class FileUploadHandler {
             const route = this.uploadedRoutes.find(r => r.id === routeId);
             if (route) {
                 this.selectedRoutes.add(routeId);
-                this.showRoute(routeId);
             }
         });
 
-        // Update UI
-        this.updateRouteList();
+        // Single notification with restored routes info
+        this.notifyStateChange('aggregated-route-removed', { restoredRoutes: sourceRouteIds });
+        
         console.log(`🗑️ Aggregated route removed, restored ${sourceRouteIds.length} individual routes`);
     }
 
