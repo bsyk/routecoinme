@@ -703,7 +703,7 @@ class RouteManipulator {
         
         // Create combined route
         const combinedRoute = {
-            id: firstRoute.id || this._generateRouteId(),
+            id: this._generateRouteId(),
             filename: `${firstRoute.filename || 'Route1'} + ${secondRoute.filename || 'Route2'}`,
             points: combinedPoints,
             distance: (firstRoute.distance || 0) + (secondRoute.distance || 0),

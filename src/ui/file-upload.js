@@ -1353,8 +1353,8 @@ class FileUploadHandler {
 
         let routeItems = '';
 
-        // Show aggregated route if it exists and is being displayed
-        if (this.aggregatedRoute && this.isShowingAggregated) {
+        // Show aggregated route if it exists (checkbox state based on isShowingAggregated)
+        if (this.aggregatedRoute) {
             const color = '#ff6b35'; // Orange color for aggregated route
             const duration = this.aggregatedRoute.duration ? this.formatDuration(this.aggregatedRoute.duration) : 'Unknown';
             
@@ -1362,7 +1362,8 @@ class FileUploadHandler {
                 <div class="route-list-item aggregated-route" data-route-id="${this.aggregatedRoute.id}">
                     <div class="route-item-checkbox">
                         <input type="checkbox" id="route-checkbox-${this.aggregatedRoute.id}" 
-                               checked onchange="window.fileUploader.toggleRouteVisibility('${this.aggregatedRoute.id}')">
+                               ${this.isShowingAggregated ? 'checked' : ''} 
+                               onchange="window.fileUploader.toggleRouteVisibility('${this.aggregatedRoute.id}')">
                     </div>
                     <div class="route-item-info">
                         <h4>🔗 ${this.aggregatedRoute.filename}</h4>
@@ -1388,11 +1389,12 @@ class FileUploadHandler {
             `;
         }
 
-        // Show individual routes (always show them, but may be unchecked)
+        // Show individual routes (checkbox state based on selection and mutual exclusivity)
         routeItems += this.uploadedRoutes.map((route, index) => {
             const color = this.mapViz.routeLayers.find(layer => layer.id === route.id)?.color || '#2563eb';
             const duration = route.duration ? this.formatDuration(route.duration) : 'Unknown';
-            const isSelected = this.selectedRoutes.has(route.id);
+            // Individual route is selected if it's in selectedRoutes AND we're not showing aggregated
+            const isSelected = !this.isShowingAggregated && this.selectedRoutes.has(route.id);
             
             return `
                 <div class="route-list-item ${isSelected ? 'selected' : 'unselected'}" data-route-id="${route.id}">
@@ -1615,19 +1617,38 @@ class FileUploadHandler {
         console.log(`🗑️ Route removed: ${routeId}`);
     }
 
-    // Toggle route visibility
+    // Toggle route visibility (with mutually exclusive aggregated vs individual routes)
     toggleRouteVisibility(routeId) {
         const checkbox = document.getElementById(`route-checkbox-${routeId}`);
         const isChecked = checkbox?.checked || false;
 
         if (routeId === this.aggregatedRoute?.id) {
             // Handle aggregated route visibility
-            this.isShowingAggregated = isChecked;
+            if (isChecked) {
+                // Select aggregated route, unselect all individual routes
+                console.log('🔗 Selecting aggregated route - clearing individual route selections');
+                this.selectedRoutes.clear();
+                this.isShowingAggregated = true;
+            } else {
+                // Unselect aggregated route, default to selecting all individual routes
+                console.log('🔗 Unselecting aggregated route - selecting all individual routes');
+                this.isShowingAggregated = false;
+                this.uploadedRoutes.forEach(route => {
+                    this.selectedRoutes.add(route.id);
+                });
+            }
         } else {
             // Handle individual route visibility
             if (isChecked) {
+                // Select individual route, unselect aggregated route if it was showing
+                if (this.isShowingAggregated) {
+                    console.log('🔗 Selecting individual route - clearing aggregated route');
+                    this.isShowingAggregated = false;
+                    this.selectedRoutes.clear(); // Start fresh with individual selections
+                }
                 this.selectedRoutes.add(routeId);
             } else {
+                // Unselect individual route
                 this.selectedRoutes.delete(routeId);
             }
         }
@@ -1640,6 +1661,7 @@ class FileUploadHandler {
         });
         
         console.log(`👁️ Route ${routeId} visibility: ${isChecked ? 'shown' : 'hidden'}`);
+        console.log(`📊 Current state: aggregated=${this.isShowingAggregated}, individual=${this.selectedRoutes.size} selected`);
     }
 
     // Show a specific route (legacy method - use unified approach)
@@ -1692,10 +1714,24 @@ class FileUploadHandler {
     }
 
     // Update just the stats display
+    // Update stats display (shows stats for currently visible routes)
     updateStatsDisplay() {
-        const totalRoutes = this.uploadedRoutes.length;
-        const totalDistance = this.uploadedRoutes.reduce((sum, route) => sum + route.distance, 0);
-        const totalElevation = this.uploadedRoutes.reduce((sum, route) => sum + route.elevationGain, 0);
+        let totalRoutes, totalDistance, totalElevation;
+        
+        if (this.isShowingAggregated && this.aggregatedRoute) {
+            // Show stats for aggregated route only
+            totalRoutes = 1;
+            totalDistance = this.aggregatedRoute.distance;
+            totalElevation = this.aggregatedRoute.elevationGain;
+        } else {
+            // Show stats for selected individual routes
+            const selectedRoutesData = this.uploadedRoutes.filter(route => 
+                this.selectedRoutes.has(route.id)
+            );
+            totalRoutes = selectedRoutesData.length;
+            totalDistance = selectedRoutesData.reduce((sum, route) => sum + route.distance, 0);
+            totalElevation = selectedRoutesData.reduce((sum, route) => sum + route.elevationGain, 0);
+        }
 
         // Update stats display using new IDs (with null checks)
         const routesCountEl = document.getElementById('stat-routes-count');
@@ -1715,7 +1751,8 @@ class FileUploadHandler {
         if (!routesCountEl || !totalDistanceEl || !totalElevationEl) {
             console.warn('⚠️ Some stats elements not found, stats update postponed');
         } else {
-            console.log(`📊 Stats updated: ${totalRoutes} routes, ${totalDistance.toFixed(1)}km, ${Math.round(totalElevation)}m`);
+            const statsType = this.isShowingAggregated ? 'aggregated' : 'selected individual';
+            console.log(`📊 Stats updated (${statsType}): ${totalRoutes} routes, ${totalDistance.toFixed(1)}km, ${Math.round(totalElevation)}m`);
         }
     }
 
