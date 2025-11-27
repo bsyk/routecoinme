@@ -145,6 +145,12 @@ class Route3DVisualization {
 
     // Setup basic scene elements (minimal circle for initial view)
     setupBasicScene() {
+        // Guard against calling when not initialized
+        if (!this.scene) {
+            console.warn('⚠️ Cannot setup basic scene - scene not initialized');
+            return;
+        }
+        
         // Create basic circular ground
         const groundGeometry = new THREE.CircleGeometry(1000, 32);
         const groundMaterial = new THREE.MeshLambertMaterial({ 
@@ -779,6 +785,12 @@ class Route3DVisualization {
 
     // Clear all routes
     clearAllRoutes() {
+        // Guard against calling clearAllRoutes when not initialized
+        if (!this.isInitialized || !this.scene) {
+            console.log('⚠️ 3D viewer not initialized, skipping clearAllRoutes');
+            return;
+        }
+        
         this.routeMeshes.forEach(mesh => {
             if (mesh.routeLine) this.scene.remove(mesh.routeLine);
             if (mesh.filledArea) this.scene.remove(mesh.filledArea);
