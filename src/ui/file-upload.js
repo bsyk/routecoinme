@@ -868,6 +868,24 @@ class FileUploadHandler {
     createDistanceBasedAggregation(routes, elevationMode) {
         console.log(`🔗 Creating distance-based aggregation with ${elevationMode} elevation using RouteManipulator...`);
         
+        // IMPORTANT: Preserve the true aggregated statistics before scaling for visualization
+        const originalStats = routes.reduce((acc, route) => {
+            const rstats = this.routeManipulator.calculateRouteStats(route);
+            return {
+                distance: acc.distance + rstats.distance,
+                elevationGain: acc.elevationGain + rstats.elevationGain,
+                elevationLoss: acc.elevationLoss + rstats.elevationLoss,
+                duration: acc.duration + rstats.duration
+            };
+        }, {
+            distance: 0,
+            elevationGain: 0,
+            elevationLoss: 0,
+            duration: 0
+        });
+
+        console.log(`📊 Original combined stats before aggregation: ${originalStats.distance.toFixed(1)}km, ${originalStats.elevationGain.toFixed(1)}m gain`);  
+
         // Use RouteManipulator to aggregate routes
         let aggregatedRoute = this.routeManipulator.aggregateRoutes(routes);
         
@@ -880,6 +898,12 @@ class FileUploadHandler {
         console.log(`📏 Scaling elevation for 3D visualization...`);
         aggregatedRoute = this.routeManipulator.scaleElevation(aggregatedRoute, 10000);
         
+        // Restore the original statistics (scaleElevation modifies them for visualization)
+        aggregatedRoute.distance = originalStats.distance;
+        aggregatedRoute.elevationGain = originalStats.elevationGain;
+        aggregatedRoute.elevationLoss = originalStats.elevationLoss;
+        aggregatedRoute.duration = originalStats.duration;
+        
         // Update metadata to include aggregation details
         aggregatedRoute.filename = `Aggregated Route (${routes.length} routes) - ${elevationMode === 'actual' ? 'Distance' : 'Cumulative Climbing'}`;
         aggregatedRoute.metadata = {
@@ -888,6 +912,8 @@ class FileUploadHandler {
             description: `Combined from ${routes.length} individual routes using distance-based ${elevationMode} aggregation`,
             aggregationMode: 'distance',
             elevationMode: elevationMode,
+            // Store original stats for reference
+            originalStats: originalStats,
             sourceRoutes: routes.map(r => ({
                 id: r.id,
                 filename: r.filename,
@@ -911,6 +937,25 @@ class FileUploadHandler {
     createTimeBasedAggregation(routes, elevationMode) {
         console.log(`⏰ Creating time-based aggregation with ${elevationMode} elevation using RouteManipulator...`);
         
+        // IMPORTANT: Preserve the true aggregated statistics before scaling for visualization
+        const originalStats = routes.reduce((acc, route) => {
+            const rstats = this.routeManipulator.calculateRouteStats(route);
+            return {
+                distance: acc.distance + rstats.distance,
+                elevationGain: acc.elevationGain + rstats.elevationGain,
+                elevationLoss: acc.elevationLoss + rstats.elevationLoss,
+                duration: acc.duration + rstats.duration
+            };
+        }, {
+            distance: 0,
+            elevationGain: 0,
+            elevationLoss: 0,
+            duration: 0
+        });
+
+        console.log(`📊 Original combined stats before aggregation: ${originalStats.distance.toFixed(1)}km, ${originalStats.elevationGain.toFixed(1)}m gain`);  
+
+
         // Step 1: Spatially aggregate routes using RouteManipulator
         let spatiallyAggregatedRoute = this.routeManipulator.aggregateRoutes(routes);
         
@@ -956,6 +1001,12 @@ class FileUploadHandler {
         console.log(`📏 Scaling elevation for 3D visualization...`);
         aggregatedRoute = this.routeManipulator.scaleElevation(aggregatedRoute, 10000);
         
+        // Restore the original statistics (scaleElevation modifies them for visualization)
+        aggregatedRoute.distance = originalStats.distance;
+        aggregatedRoute.elevationGain = originalStats.elevationGain;
+        aggregatedRoute.elevationLoss = originalStats.elevationLoss;
+        aggregatedRoute.duration = originalStats.duration;
+        
         // Step 6: Update metadata
         const stepLabel = timeStepMs >= 24 * 60 * 60 * 1000 ? 'day' :
                          timeStepMs >= 60 * 60 * 1000 ? 'hour' : 'minute';
@@ -969,6 +1020,8 @@ class FileUploadHandler {
             elevationMode: elevationMode,
             timeStep: stepLabel,
             timeStepMs: timeStepMs,
+            // Store original stats for reference
+            originalStats: originalStats,
             sourceRoutes: routes.map(r => ({
                 id: r.id,
                 filename: r.filename,
@@ -992,15 +1045,25 @@ class FileUploadHandler {
     async createFictionalRouteAggregation(routes, elevationMode, pathPattern) {
         console.log(`🎨 Creating fictional route with ${pathPattern} pattern and ${elevationMode} elevation using RouteManipulator...`);
         
-        // IMPORTANT: Preserve true aggregated statistics before applying fictional coordinates
-        const originalStats = {
-            distance: routes.reduce((acc, r) => acc + r.distance, 0),
-            elevationGain: routes.reduce((acc, r) => acc + r.elevationGain, 0),
-            elevationLoss: routes.reduce((acc, r) => acc + r.elevationLoss, 0),
-            duration: routes.reduce((acc, r) => acc + (r.duration || 0), 0),
-        };
-        console.log(`📊 Preserving true aggregated stats: ${originalStats.distance.toFixed(1)}km, ${originalStats.elevationGain.toFixed(1)}m gain`);
-        
+        // IMPORTANT: Preserve the true aggregated statistics before scaling for visualization
+        const originalStats = routes.reduce((acc, route) => {
+            const rstats = this.routeManipulator.calculateRouteStats(route);
+            return {
+                distance: acc.distance + rstats.distance,
+                elevationGain: acc.elevationGain + rstats.elevationGain,
+                elevationLoss: acc.elevationLoss + rstats.elevationLoss,
+                duration: acc.duration + rstats.duration
+            };
+        }, {
+            distance: 0,
+            elevationGain: 0,
+            elevationLoss: 0,
+            duration: 0
+        });
+
+        console.log(`📊 Original combined stats before aggregation: ${originalStats.distance.toFixed(1)}km, ${originalStats.elevationGain.toFixed(1)}m gain`);  
+
+
         // Step 1: Aggregate routes using RouteManipulator (distance-based)
         let aggregatedRoute = this.routeManipulator.aggregateRoutes(routes);
         
@@ -1017,7 +1080,7 @@ class FileUploadHandler {
         console.log(`📏 Scaling elevation for 3D visualization...`);
         fictionalRoute = this.routeManipulator.scaleElevation(fictionalRoute, 10000);
         
-        // Step 5: Ensure true aggregated statistics are preserved (predetermined path should have done this, but double-check)
+        // Step 5: Restore the true aggregated statistics (after all transformations)
         fictionalRoute.distance = originalStats.distance;
         fictionalRoute.elevationGain = originalStats.elevationGain;
         fictionalRoute.elevationLoss = originalStats.elevationLoss;
@@ -1032,6 +1095,8 @@ class FileUploadHandler {
             aggregationMode: 'fictional',
             elevationMode: elevationMode,
             pathPattern: pathPattern,
+            // Store original stats for reference
+            originalStats: originalStats,
             sourceRoutes: routes.map(r => ({
                 id: r.id,
                 filename: r.filename,
