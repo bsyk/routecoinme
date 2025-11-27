@@ -41,6 +41,12 @@ class FileUploadHandler {
         // Set up centralized state listener
         this.setupStateListener();
         
+        // Initialize the map visualization
+        this.initializeMapVisualization();
+        
+        // Show initial UI state
+        this.showInitialUIState();
+        
         await this.loadStoredRoutes();
     }
 
@@ -172,7 +178,13 @@ class FileUploadHandler {
                     break;
                     
                 default:
-                    // For simple state changes, just refresh the UI
+                    // For simple state changes, ensure UI state and refresh
+                    if (this.uploadedRoutes.length > 0) {
+                        const routeVisualizationArea = document.getElementById('route-visualization-area');
+                        if (routeVisualizationArea && routeVisualizationArea.style.display === 'none') {
+                            this.showRoutesUI();
+                        }
+                    }
                     this.updateRouteList();
                     this.updateStatsDisplay();
             }
@@ -181,15 +193,40 @@ class FileUploadHandler {
 
     // Specific change handlers
     handleRouteAdded(route) {
-        // Add to visualizations if selected
-        if (this.selectedRoutes.has(route.id)) {
-            this.mapViz.addRoute(route);
-            this.addRouteTo3DViewerIfInitialized(route);
+        console.log(`🎯 Handling route added: ${route.filename}`);
+        
+        // Switch to routes UI if this is the first route
+        if (this.uploadedRoutes.length === 1) {
+            this.showRoutesUI();
+            // Ensure map is initialized when switching to routes UI
+            this.initializeMapVisualization();
         }
         
-        // Update UI
-        this.updateRouteList();
+        // Add to visualizations if selected
+        if (this.selectedRoutes.has(route.id)) {
+            // Add to map only if it's initialized
+            if (this.mapViz?.map) {
+                console.log(`🗺️ Adding route to map: ${route.filename}`);
+                this.mapViz.addRoute(route);
+            } else {
+                console.log(`⚠️ Map not initialized, route will be added when map initializes: ${route.filename}`);
+            }
+            
+            // Add to 3D viewer if it's active and initialized
+            if (this.currentViewMode === '3d' && this.is3DInitialized && this.viewer3D?.isInitialized) {
+                console.log(`🎮 Adding route to active 3D viewer: ${route.filename}`);
+                try {
+                    this.viewer3D.addRoute(route);
+                    console.log(`✅ Route successfully added to 3D viewer: ${route.filename}`);
+                } catch (error) {
+                    console.error(`❌ Failed to add route to 3D viewer:`, error);
+                }
+            }
+        }
+        
+        // Update UI elements (stats and route list)
         this.updateStatsDisplay();
+        this.updateRouteList();
     }
 
     handleRouteRemoved(routeId) {
@@ -209,12 +246,22 @@ class FileUploadHandler {
         if (!route) return;
 
         if (visible) {
-            this.mapViz.addRoute(route);
+            // Add to map only if it's initialized
+            if (this.mapViz?.map) {
+                this.mapViz.addRoute(route);
+            } else {
+                console.warn(`⚠️ Map not initialized, cannot add route: ${route.filename}`);
+            }
+            
             if (this.is3DInitialized && this.viewer3D) {
                 this.viewer3D.addRoute(route);
             }
         } else {
-            this.mapViz.removeRoute(routeId);
+            // Remove from visualizations
+            if (this.mapViz?.map) {
+                this.mapViz.removeRoute(routeId);
+            }
+            
             if (this.is3DInitialized && this.viewer3D) {
                 this.viewer3D.removeRoute(routeId);
             }
@@ -261,15 +308,126 @@ class FileUploadHandler {
     refreshAllVisualizationsAndUI() {
         console.log('🔄 Refreshing all visualizations and UI...');
         
-        // Update UI elements
-        this.updateUIAfterUpload({ 
-            successful: this.uploadedRoutes, 
-            failed: [] 
-        });
+        // Hide loading state
+        this.hideLoadingState();
         
-        // Refresh 3D if needed
-        if (this.is3DInitialized) {
+        // Switch to routes UI if we have routes and not already there
+        if (this.uploadedRoutes.length > 0) {
+            const routeVisualizationArea = document.getElementById('route-visualization-area');
+            if (routeVisualizationArea && routeVisualizationArea.style.display === 'none') {
+                this.showRoutesUI();
+            }
+        }
+        
+        // Update the dynamic parts
+        this.updateStatsDisplay();
+        this.updateRouteList();
+        
+        // Refresh 3D if we're in 3D mode and it's initialized
+        if (this.currentViewMode === '3d' && this.is3DInitialized) {
+            console.log('🎮 Refreshing 3D viewer for batch completion...');
             this.refresh3DViewer();
+        }
+    }
+
+    // Show the appropriate initial UI state
+    showInitialUIState() {
+        const landingState = document.getElementById('landing-state');
+        const fileUploadSection = document.getElementById('file-upload-section');
+        const routeVisualizationArea = document.getElementById('route-visualization-area');
+        
+        // Show landing state initially
+        if (landingState) landingState.style.display = 'block';
+        if (fileUploadSection) fileUploadSection.style.display = 'none';
+        if (routeVisualizationArea) routeVisualizationArea.style.display = 'none';
+        
+        console.log('🎨 Initial UI state displayed');
+    }
+
+    // Show file upload UI state
+    showFileUploadUI() {
+        const landingState = document.getElementById('landing-state');
+        const fileUploadSection = document.getElementById('file-upload-section');
+        const routeVisualizationArea = document.getElementById('route-visualization-area');
+        
+        if (landingState) landingState.style.display = 'none';
+        if (fileUploadSection) fileUploadSection.style.display = 'block';
+        if (routeVisualizationArea) routeVisualizationArea.style.display = 'none';
+        
+        console.log('📁 File upload UI displayed');
+    }
+
+    // Show routes visualization UI state
+    showRoutesUI() {
+        const landingState = document.getElementById('landing-state');
+        const fileUploadSection = document.getElementById('file-upload-section');
+        const routeVisualizationArea = document.getElementById('route-visualization-area');
+        
+        if (landingState) landingState.style.display = 'none';
+        if (fileUploadSection) fileUploadSection.style.display = 'none';
+        if (routeVisualizationArea) routeVisualizationArea.style.display = 'block';
+        
+        console.log('🗺️ Routes visualization UI displayed');
+    }
+
+    // Initialize map visualization
+    initializeMapVisualization() {
+        const mapElement = document.getElementById('route-map');
+        if (!mapElement) {
+            console.warn('⚠️ Map element not found during initialization');
+            return;
+        }
+
+        // Initialize the map
+        if (!this.mapViz.map) {
+            const mapInitialized = this.mapViz.initializeMap(mapElement);
+            if (mapInitialized) {
+                console.log('🗺️ Map visualization initialized');
+                
+                // Only add routes if we have them and they're selected
+                this.addSelectedRoutesToMap();
+            } else {
+                console.error('❌ Failed to initialize map visualization');
+            }
+        } else {
+            console.log('🗺️ Map already initialized, adding selected routes');
+            this.addSelectedRoutesToMap();
+        }
+    }
+
+    // Helper method to add selected routes to map
+    addSelectedRoutesToMap() {
+        if (!this.mapViz?.map) {
+            console.warn('⚠️ Map not ready, skipping route addition');
+            return;
+        }
+
+        if (this.isShowingAggregated && this.aggregatedRoute) {
+            // Show aggregated route
+            console.log('🔗 Adding aggregated route to map');
+            this.mapViz.addRoute(this.aggregatedRoute);
+        } else if (this.uploadedRoutes.length > 0) {
+            // Show selected individual routes
+            let addedRoutes = 0;
+            this.uploadedRoutes.forEach(route => {
+                if (this.selectedRoutes.has(route.id)) {
+                    console.log(`🗺️ Adding selected route to map: ${route.filename}`);
+                    this.mapViz.addRoute(route);
+                    addedRoutes++;
+                }
+            });
+
+            // If no routes are selected but we have routes, auto-select all routes (for initial load)
+            if (this.selectedRoutes.size === 0 && this.uploadedRoutes.length > 0) {
+                console.log('🎯 Auto-selecting all routes for initial map display');
+                this.uploadedRoutes.forEach(route => {
+                    this.selectedRoutes.add(route.id);
+                    this.mapViz.addRoute(route);
+                    addedRoutes++;
+                });
+            }
+            
+            console.log(`✅ Added ${addedRoutes} routes to map visualization`);
         }
     }
 
@@ -454,136 +612,64 @@ class FileUploadHandler {
 
     // Show loading state in UI
     showLoadingState() {
-        const demoArea = document.querySelector('.demo-placeholder');
-        if (demoArea) {
-            demoArea.innerHTML = `
-                <h3>📁 Processing GPX Files...</h3>
-                <p>Parsing GPS data and calculating route statistics</p>
-                <div class="loading-spinner">
-                    <div class="spinner"></div>
-                </div>
-            `;
+        // Switch to routes UI if not already there
+        this.showRoutesUI();
+        
+        // Show loading section and hide main content
+        const loadingState = document.getElementById('loading-state');
+        const mainContent = document.getElementById('main-content');
+        
+        if (loadingState) {
+            loadingState.style.display = 'block';
         }
+        if (mainContent) {
+            mainContent.style.display = 'none';
+        }
+        
+        console.log('⏳ Loading state displayed');
+    }
+
+    // Hide loading state in UI
+    hideLoadingState() {
+        // Hide loading section and show main content
+        const loadingState = document.getElementById('loading-state');
+        const mainContent = document.getElementById('main-content');
+        
+        if (loadingState) {
+            loadingState.style.display = 'none';
+        }
+        if (mainContent) {
+            mainContent.style.display = 'block';
+        }
+        
+        console.log('✅ Loading state hidden');
     }
 
     // Update UI after file upload
     updateUIAfterUpload(results) {
-        const demoArea = document.querySelector('.demo-placeholder');
-        if (!demoArea) return;
-
-        const totalRoutes = this.uploadedRoutes.length;
-        const totalDistance = this.uploadedRoutes.reduce((sum, route) => sum + route.distance, 0);
-        const totalElevation = this.uploadedRoutes.reduce((sum, route) => sum + route.elevationGain, 0);
-
-        demoArea.innerHTML = `
-            <div class="gpx-upload-area">
-                <h3>📊 GPX Routes Loaded</h3>
-                <div class="route-stats">
-                    <div class="stat-item">
-                        <span class="stat-number">${totalRoutes}</span>
-                        <span class="stat-label">Routes</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-number">${totalDistance.toFixed(1)}km</span>
-                        <span class="stat-label">Total Distance</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-number">${Math.round(totalElevation)}m</span>
-                        <span class="stat-label">Total Elevation</span>
-                    </div>
-                </div>
-                
-                <!-- Map Container -->
-                <div class="map-container" id="map-container" style="display: ${this.currentViewMode === 'map' ? 'block' : 'none'}">
-                    <div id="route-map"></div>
-                    <div class="map-controls">
-                        <button class="map-control-btn" onclick="window.fileUploader.toggleFullscreen()" title="Toggle Fullscreen">
-                            📐
-                        </button>
-                        <button class="map-control-btn" onclick="window.fileUploader.fitMapToRoutes()" title="Fit All Routes">
-                            🔍
-                        </button>
-                    </div>
-                </div>
-
-                <!-- 3D Viewer Container -->
-                <div class="viewer-3d-container" id="viewer-3d-container" style="display: ${this.currentViewMode === '3d' ? 'block' : 'none'}">
-                    <div id="route-3d-viewer" style="width: 100%; height: 100%; position: relative;"></div>
-                    
-                    <!-- Zoom Controls - Top Left -->
-                    <div class="control-overlay control-top-left">
-                        <button class="control-btn" onclick="window.fileUploader.zoomIn3D()" title="Zoom In">+</button>
-                        <button class="control-btn" onclick="window.fileUploader.zoomOut3D()" title="Zoom Out">−</button>
-                    </div>
-                    
-                    <!-- View Controls - Top Right -->
-                    <div class="control-overlay control-top-right">
-                        <button class="control-btn" onclick="window.fileUploader.fitToView3D()" title="Fit to View">△</button>
-                        <button class="control-btn" onclick="window.fileUploader.resetView3D()" title="Reset View">🏠</button>
-                    </div>
-                    
-                    <!-- Display Options - Bottom Right -->
-                    <div class="control-overlay control-bottom-right">
-                        <label class="control-checkbox">
-                            <input type="checkbox" id="filled-area-toggle" checked 
-                                   onchange="window.fileUploader.toggleFilledArea(this.checked)">
-                            <span>Filled Areas</span>
-                        </label>
-                    </div>
-                    
-                    <div class="viewer-3d-status">
-                        <span>🎮 Mouse: rotate • Wheel: zoom • ${totalRoutes} routes loaded</span>
-                    </div>
-                </div>
-
-                <!-- View Mode Toggle -->
-                <div class="viewer-toggle-buttons">
-                    <button class="viewer-toggle-btn ${this.currentViewMode === 'map' ? 'active' : ''}" 
-                            onclick="window.fileUploader.switchViewMode('map')">
-                        🗺️ Map View
-                    </button>
-                    <button class="viewer-toggle-btn ${this.currentViewMode === '3d' ? 'active' : ''}" 
-                            onclick="window.fileUploader.switchViewMode('3d')">
-                        🏔️ 3D View
-                    </button>
-                </div>
-                
-                <!-- Route List -->
-                <div class="route-list-panel">
-                    <h4>Routes on Map</h4>
-                    <div id="route-list"></div>
-                </div>
-                
-                <div class="upload-actions">
-                    <button class="btn btn-primary" onclick="window.fileUploader.triggerFileUpload()">
-                        📁 Upload More GPX Files
-                    </button>
-                    <button class="btn btn-secondary" onclick="window.fileUploader.clearAllRoutes()">
-                        �️ Clear All Routes
-                    </button>
-                    <button class="btn btn-secondary" onclick="window.fileUploader.showAggregationOptions()">
-                        🔗 Aggregate Routes
-                    </button>
-                </div>
-
-                <div class="drop-zone-hint">
-                    <p>💡 Tip: You can also drag & drop GPX files anywhere on this page</p>
-                </div>
-            </div>
-        `;
-
-        // Initialize map and add routes
-        this.initializeMapVisualization();
+        console.log('🔄 Updating UI stats after upload...');
         
-        // Note: No need to refresh 3D viewer here since new routes are already added via addRouteTo3DViewerIfInitialized()
-        // in the addRoute() method. This prevents double-processing of routes.
+        // Hide loading state
+        this.hideLoadingState();
         
+        // Switch to routes UI if we have routes
+        if (this.uploadedRoutes.length > 0) {
+            this.showRoutesUI();
+            
+            // Ensure map is initialized and routes are added
+            this.initializeMapVisualization();
+        }
+        
+        // Update stats and route list
+        this.updateStatsDisplay();
         this.updateRouteList();
 
-        // Show results summary
-        if (results.failed.length > 0) {
+        // Show results summary if there were failures
+        if (results.failed && results.failed.length > 0) {
             this.showUploadResults(results);
         }
+        
+        console.log('✅ UI updated without DOM restructuring');
     }
 
     // Show upload results (especially errors)
@@ -1065,7 +1151,9 @@ class FileUploadHandler {
 
     // Clear all routes
     async clearAllRoutes() {
+        console.log('🗑️ Clearing all routes...');
         this.uploadedRoutes = [];
+        this.aggregatedRoute = null;
         
         // Clear from storage
         try {
@@ -1079,8 +1167,21 @@ class FileUploadHandler {
                 await this.storageManager.clearOldStorageData();
             }
         }
+
+        // Clear map visualization
+        if (this.mapVisualization) {
+            this.mapVisualization.clearMap();
+        }
+
+        // Clear 3D visualization
+        if (this.viewer3D) {
+            this.viewer3D.clearAllRoutes();
+        }
         
-        this.updateUIAfterUpload({ successful: [], failed: [] });
+        // Return to initial state
+        this.showInitialUIState();
+        
+        console.log('✅ All routes cleared');
     }
 
     // Load routes from storage (using unified storage manager interface)
@@ -1098,6 +1199,13 @@ class FileUploadHandler {
             if (this.uploadedRoutes.length > 0) {
                 console.log(`📂 Loaded ${this.uploadedRoutes.length} routes from storage`);
                 console.log('📋 Routes loaded:', this.uploadedRoutes.map(r => r.filename));
+                
+                // Auto-select all loaded routes for display
+                this.uploadedRoutes.forEach(route => {
+                    this.selectedRoutes.add(route.id);
+                });
+                console.log(`✅ Auto-selected ${this.selectedRoutes.size} routes for display`);
+                
                 console.log('🔄 Calling updateUIAfterUpload to initialize viewers...');
                 this.updateUIAfterUpload({ successful: this.uploadedRoutes, failed: [] });
             } else {
@@ -1145,8 +1253,9 @@ class FileUploadHandler {
                     }
                 });
 
-                // If no routes are selected, show all routes (for initial load)
+                // If no routes are selected but we have routes, auto-select all routes (for initial load)
                 if (this.selectedRoutes.size === 0 && this.uploadedRoutes.length > 0) {
+                    console.log('🎯 Auto-selecting all routes for initial map display');
                     this.uploadedRoutes.forEach(route => {
                         this.selectedRoutes.add(route.id);
                         this.mapViz.addRoute(route);
@@ -1674,14 +1783,28 @@ class FileUploadHandler {
         const totalDistance = this.uploadedRoutes.reduce((sum, route) => sum + route.distance, 0);
         const totalElevation = this.uploadedRoutes.reduce((sum, route) => sum + route.elevationGain, 0);
 
-        // Update stats numbers
-        const statNumbers = document.querySelectorAll('.stat-number');
-        if (statNumbers.length >= 3) {
-            statNumbers[0].textContent = totalRoutes;
-            statNumbers[1].textContent = `${totalDistance.toFixed(1)}km`;
-            statNumbers[2].textContent = `${Math.round(totalElevation)}m`;
+        // Update stats display using new IDs (with null checks)
+        const routesCountEl = document.getElementById('stat-routes-count');
+        const totalDistanceEl = document.getElementById('stat-total-distance');
+        const totalElevationEl = document.getElementById('stat-total-elevation');
+        
+        if (routesCountEl) {
+            routesCountEl.textContent = totalRoutes;
+        }
+        if (totalDistanceEl) {
+            totalDistanceEl.textContent = `${totalDistance.toFixed(1)}km`;
+        }
+        if (totalElevationEl) {
+            totalElevationEl.textContent = `${Math.round(totalElevation)}m`;
+        }
+        
+        if (!routesCountEl || !totalDistanceEl || !totalElevationEl) {
+            console.warn('⚠️ Some stats elements not found, stats update postponed');
+        } else {
+            console.log(`📊 Stats updated: ${totalRoutes} routes, ${totalDistance.toFixed(1)}km, ${Math.round(totalElevation)}m`);
         }
     }
+
     // Get storage information for debugging
     async getStorageInfo() {
         if (this.storageManager) {
