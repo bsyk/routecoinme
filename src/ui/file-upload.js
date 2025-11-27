@@ -975,14 +975,8 @@ class FileUploadHandler {
         const totalTimespan = endTime - startTime;
         
         // Step 3: Determine appropriate time step
-        let timeStepMs;
-        if (totalTimespan < 24 * 60 * 60 * 1000) { // Less than 24 hours
-            timeStepMs = 60 * 1000; // 1 minute
-        } else if (totalTimespan < 28 * 24 * 60 * 60 * 1000) { // Less than 28 days
-            timeStepMs = 60 * 60 * 1000; // 1 hour
-        } else {
-            timeStepMs = 24 * 60 * 60 * 1000; // 1 day
-        }
+        // < 28 days: 1 minute, else 1 hour
+        const timeStepMs = totalTimespan < 28 * 24 * 60 * 60 * 1000 ? 60 * 1000 : 60 * 60 * 1000;
         
         // Step 4: Convert to time domain
         let aggregatedRoute = this.routeManipulator.convertToTimeDomain(
@@ -1071,7 +1065,7 @@ class FileUploadHandler {
         if (elevationMode === 'cumulative') {
             aggregatedRoute = this.routeManipulator.convertToCumulativeElevation(aggregatedRoute);
         }
-        
+
         // Step 3: Apply the predetermined path using RouteManipulator (this overlays coordinates only)
         console.log(`🗺️ Applying predetermined path: ${pathPattern}`);
         let fictionalRoute = await this.routeManipulator.applyPredeterminedPath(aggregatedRoute, pathPattern);
