@@ -717,10 +717,18 @@ class FileUploadHandler {
                             </label>
                             
                             <label class="aggregation-option">
-                                <input type="radio" name="path-pattern" value="switchbacks.json">
+                                <input type="radio" name="path-pattern" value="stelvio.json">
                                 <div class="option-content">
-                                    <strong>⚡ Switchbacks</strong>
-                                    <p>Stelvio Pass mountain road with authentic switchback pattern (~2500 waypoints)</p>
+                                    <strong>⚡ Stelvio Pass</strong>
+                                    <p>Stelvio Pass mountain road</p>
+                                </div>
+                            </label>
+
+                            <label class="aggregation-option">
+                                <input type="radio" name="path-pattern" value="sa-calobra.json">
+                                <div class="option-content">
+                                    <strong>🏔️ Sa Calobra</strong>
+                                    <p>Famous Mallorca road with stunning views and hairpin turns</p>
                                 </div>
                             </label>
                         </div>
