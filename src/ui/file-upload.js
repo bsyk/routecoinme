@@ -1433,7 +1433,7 @@ class FileUploadHandler {
                                onchange="window.fileUploader.toggleRouteVisibility('${this.aggregatedRoute.id}')">
                     </div>
                     <div class="route-item-info">
-                        <h4>🔗 ${this.aggregatedRoute.filename}</h4>
+                        <h4 title="${this.aggregatedRoute.filename}">🔗 ${this.truncateFilename(this.aggregatedRoute.filename)}</h4>
                         <div class="route-item-stats">
                             <span>📏 ${this.aggregatedRoute.distance.toFixed(1)}km</span>
                             <span>⛰️ ${Math.round(this.aggregatedRoute.elevationGain)}m</span>
@@ -1471,7 +1471,7 @@ class FileUploadHandler {
                                onchange="window.fileUploader.toggleRouteVisibility('${route.id}')">
                     </div>
                     <div class="route-item-info">
-                        <h4>${route.filename}</h4>
+                        <h4 title="${route.filename}">${this.truncateFilename(route.filename)}</h4>
                         <div class="route-item-stats">
                             <span>📏 ${route.distance.toFixed(1)}km</span>
                             <span>⛰️ ${Math.round(route.elevationGain)}m</span>
@@ -1495,6 +1495,14 @@ class FileUploadHandler {
         }).join('');
 
         routeListContainer.innerHTML = routeItems;
+    }
+
+    // Truncate filename helper
+    truncateFilename(filename, maxLength = 30) {
+        if (!filename || filename.length <= maxLength) {
+            return filename || 'Unnamed Route';
+        }
+        return filename.substring(0, maxLength - 3) + '...';
     }
 
     // Format duration helper
