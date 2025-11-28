@@ -680,7 +680,7 @@ class FileUploadHandler {
                         <h4>Aggregation Mode</h4>
                         <div class="aggregation-options">
                             <label class="aggregation-option">
-                                <input type="radio" name="aggregation-mode" value="distance" checked>
+                                <input type="radio" name="aggregation-mode" value="distance">
                                 <div class="option-content">
                                     <strong>📏 Distance Mode</strong>
                                     <p>Append routes end-to-end over distance (current behavior)</p>
@@ -696,7 +696,7 @@ class FileUploadHandler {
                             </label>
                             
                             <label class="aggregation-option">
-                                <input type="radio" name="aggregation-mode" value="fictional">
+                                <input type="radio" name="aggregation-mode" value="fictional" checked>
                                 <div class="option-content">
                                     <strong>🎨 Fictional Route</strong>
                                     <p>Generate synthetic coordinates with preserved elevation and timing</p>
@@ -705,11 +705,11 @@ class FileUploadHandler {
                         </div>
                     </div>
                     
-                    <div class="aggregation-option-group fictional-options" style="display: none;">
+                    <div class="aggregation-option-group fictional-options">
                         <h4>Path Pattern</h4>
                         <div class="aggregation-options">
                             <label class="aggregation-option">
-                                <input type="radio" name="path-pattern" value="spiral.json" checked>
+                                <input type="radio" name="path-pattern" value="spiral.json">
                                 <div class="option-content">
                                     <strong>🌀 Spiral</strong>
                                     <p>Spiral path that explores the full circle and converges to the center</p>
@@ -725,7 +725,7 @@ class FileUploadHandler {
                             </label>
 
                             <label class="aggregation-option">
-                                <input type="radio" name="path-pattern" value="sa-calobra.json">
+                                <input type="radio" name="path-pattern" value="sa-calobra.json" checked>
                                 <div class="option-content">
                                     <strong>🏔️ Sa Calobra</strong>
                                     <p>Famous Mallorca road with stunning views and hairpin turns</p>
@@ -738,7 +738,7 @@ class FileUploadHandler {
                         <h4>Elevation Display</h4>
                         <div class="aggregation-options">
                             <label class="aggregation-option">
-                                <input type="radio" name="elevation-mode" value="actual" checked>
+                                <input type="radio" name="elevation-mode" value="actual">
                                 <div class="option-content">
                                     <strong>⛰️ Actual Elevation</strong>
                                     <p>Show raw elevation values</p>
@@ -746,7 +746,7 @@ class FileUploadHandler {
                             </label>
                             
                             <label class="aggregation-option">
-                                <input type="radio" name="elevation-mode" value="cumulative">
+                                <input type="radio" name="elevation-mode" value="cumulative" checked>
                                 <div class="option-content">
                                     <strong>📈 Cumulative Climbing</strong>
                                     <p>Show cumulative elevation gain (preserves total climbing)</p>
@@ -1089,7 +1089,7 @@ class FileUploadHandler {
         fictionalRoute.duration = originalStats.duration;
         
         // Step 6: Update metadata for fictional route
-        fictionalRoute.filename = `Fictional Route (${routes.length} routes) - ${pathPattern} ${elevationMode === 'actual' ? 'Elevation' : 'Cumulative'}`;
+        fictionalRoute.filename = `Fictional Route (${routes.length} routes) - ${fictionalRoute?.metadata?.templateName || pathPattern} - ${elevationMode === 'actual' ? 'Elevation' : 'Cumulative'}`;
         fictionalRoute.metadata = {
             ...fictionalRoute.metadata,
             name: `Fictional ${pathPattern} Route - ${routes.map(r => r.filename).join(', ')}`,
