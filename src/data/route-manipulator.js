@@ -527,7 +527,7 @@ class RouteManipulator {
     async _loadPredeterminedPath(pathName) {
         try {
             // Construct the path to the predetermined route file
-            const filePath = `/predetermined-paths/${pathName}`;
+            const filePath = `predetermined-paths/${pathName}`;
             console.log(`📂 Fetching predetermined path from: ${filePath}`);
             
             // Fetch the file (this assumes the files are served from public/predetermined-paths/)

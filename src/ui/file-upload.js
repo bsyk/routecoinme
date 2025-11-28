@@ -2,7 +2,6 @@
 import GPXParser from '../data/gpx-parser.js';
 import RouteMapVisualization from '../visualization/route-map.js';
 import Route3DVisualization from '../visualization/route-3d.js';
-import StelvioWaypoints from '../data/stelvio-waypoints.js';
 import RouteStorageManager from '../data/route-storage.js';
 import RouteLocalStorageManager from '../data/route-storage-local.js';
 import RouteManipulator from '../data/route-manipulator.js';
@@ -12,7 +11,6 @@ class FileUploadHandler {
         this.parser = new GPXParser();
         this.mapViz = new RouteMapVisualization();
         this.viewer3D = new Route3DVisualization();
-        this.stelvioWaypoints = new StelvioWaypoints();
         this.routeManipulator = new RouteManipulator();
         this.storageManager = null; // Will be initialized in initializeStorage()
         this.uploadedRoutes = [];
