@@ -430,6 +430,7 @@ class RouteManipulator {
                 ...overlayedRoute.metadata,
                 predeterminedPath: true,
                 pathTemplate: predeterminedPathName,
+                templateName: pathTemplate?.metadata?.name || predeterminedPathName,
                 originalRoute: route.filename,
                 overlayMethod: 'lat_lon_overlay',
                 preservedData: ['elevation', 'timestamp', 'other_fields']

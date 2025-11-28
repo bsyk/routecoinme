@@ -520,9 +520,16 @@ class Route3DVisualization {
     positionCameraToFitRoutes() {
         console.log('🎯 positionCameraToFitRoutes called, boundingBox.minX:', this.boundingBox.minX);
         
+        const preferredPosition = {
+            x: 20305.4,
+            y: 35836.1,
+            z: 42946.1,
+        }
+
         if (this.boundingBox.minX === Infinity) {
             // No routes yet, use the preferred initial viewing position
-            this.camera.position.set(9066.7, 16001.4, 38808.7);
+            //
+            this.camera.position.set(preferredPosition.x, preferredPosition.y, preferredPosition.z);
             this.camera.lookAt(0, 0, 0);
             console.log(`📷 Set to preferred position (no routes): x=${this.camera.position.x}, y=${this.camera.position.y}, z=${this.camera.position.z}`);
             return;
@@ -538,15 +545,13 @@ class Route3DVisualization {
         const maxSize = Math.max(sizeX, sizeZ, 1000); // Minimum size for small routes
         
         // Use the preferred viewing angle proportions but scale based on route size
-        const preferredDistance = 42946.1;
-        const scaleBasedOnRoutes = Math.max(maxSize * 1.2, preferredDistance * 0.5); // Scale down for very large routes
-        const actualDistance = Math.min(scaleBasedOnRoutes, preferredDistance * 2); // Cap maximum distance
-        
+        const actualDistance = Math.min(Math.max(maxSize * 1.2, preferredPosition.z * 0.5), preferredPosition.z * 2.5); // Cap maximum distance
+
         // Maintain the same proportional viewing angle as the preferred position
-        const distanceRatio = actualDistance / preferredDistance;
-        const cameraX = 9066.7 * distanceRatio;
-        const cameraY = 16001.4 * distanceRatio;
-        const cameraZ = 38808.7 * distanceRatio;
+        const distanceRatio = actualDistance / preferredPosition.z;
+        const cameraX = preferredPosition.x * distanceRatio;
+        const cameraY = preferredPosition.y * distanceRatio;
+        const cameraZ = preferredPosition.z * distanceRatio;
 
         // Position camera (routes are centered at origin)
         this.camera.position.set(cameraX, cameraY, cameraZ);
