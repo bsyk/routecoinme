@@ -38,12 +38,6 @@ jobs:
       - name: Build with Vite
         run: npm run build
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-        with:
-          # Enable Pages if not already enabled
-          enablement: true
-
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -59,6 +53,9 @@ jobs:
     # Only deploy on pushes to main branch (not PRs)
     if: github.ref == 'refs/heads/main'
     steps:
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
