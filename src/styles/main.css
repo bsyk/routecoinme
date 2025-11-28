@@ -1109,6 +1109,7 @@ body {
     top: 0;
     background: var(--background);
     border-radius: var(--border-radius) var(--border-radius) 0 0;
+    z-index: 10;
 }
 
 .privacy-modal-header h2 {
@@ -1196,6 +1197,7 @@ body {
     bottom: 0;
     background: var(--background);
     border-radius: 0 0 var(--border-radius) var(--border-radius);
+    z-index: 10;
 }
 
 .privacy-modal .modal-close {
