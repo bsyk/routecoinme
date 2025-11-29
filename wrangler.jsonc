@@ -1,0 +1,14 @@
+{
+  // Cloudflare Wrangler configuration for RouteCoinMe
+  // This file configures deployment settings for Cloudflare Pages
+  
+  "name": "routecoinme",
+  "compatibility_date": "2025-11-29",
+  "compatibility_flags": ["nodejs_compat"],
+  
+  // Custom domains
+  "routes": [
+    { "pattern": "routecoin.me", "zone_name": "routecoin.me", "custom_domain": true },
+    { "pattern": "www.routecoin.me", "zone_name": "routecoin.me", "custom_domain": true }
+  ]
+}
