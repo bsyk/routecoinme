@@ -1,14 +1,29 @@
 {
   // Cloudflare Wrangler configuration for RouteCoinMe
-  // This file configures deployment settings for Cloudflare Pages
-  
+  // This file configures deployment settings for Cloudflare Workers
+  // NOTE: When using the Cloudflare Vite plugin, the Worker config (this file) is the input configuration file. 
+  // A separate output wrangler.json file is created when you run vite build. This output file is a snapshot of 
+  // your configuration at the time of the build and is modified to reference your build artifacts. It is the 
+  // configuration that is used for preview and deployment.
+  "$schema": "./node_modules/wrangler/config-schema.json",
+
   "name": "routecoinme",
   "compatibility_date": "2025-11-29",
   "compatibility_flags": ["nodejs_compat"],
   
-  // Custom domains
   "routes": [
     { "pattern": "routecoin.me", "zone_name": "routecoin.me", "custom_domain": true },
     { "pattern": "www.routecoin.me", "zone_name": "routecoin.me", "custom_domain": true }
-  ]
+  ],
+
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+
+  // The API Worker entry point
+  // The Worker will be invoked for any non-navigation request that does not match a static asset.
+  "main": "workers/strava-api.js",
 }

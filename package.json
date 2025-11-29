@@ -7,12 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "serve": "vite preview",
     "deploy": "npm run build && wrangler deploy",
-    "worker:dev": "wrangler dev workers/strava-api.js",
-    "worker:deploy": "wrangler deploy --config wrangler-worker.json",
-    "worker:deploy:staging": "wrangler deploy --config wrangler-worker.json --env staging",
-    "worker:tail": "wrangler tail routecoinme-strava-worker"
+    "tail": "wrangler tail routecoinme"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.15.3",
