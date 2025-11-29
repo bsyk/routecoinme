@@ -1,7 +1,6 @@
 // RouteCoinMe - Main Application Entry Point
 import StravaAuth from './auth/strava-auth.js';
 import FileUploadHandler from './ui/file-upload.js';
-import { config } from './config/app-config.js';
 
 console.log('🏔️ RouteCoinMe - Loading...');
 
@@ -22,9 +21,8 @@ class RouteCoinMe {
     }
 
     initializeAuth() {
-        // Initialize Strava authentication
+        // Initialize Strava authentication (via Cloudflare Workers)
         this.stravaAuth = new StravaAuth();
-        this.stravaAuth.setClientId(config.strava.clientId);
         
         // Make it globally accessible for demo purposes
         window.stravaAuth = this.stravaAuth;
@@ -90,23 +88,9 @@ class RouteCoinMe {
     }
 
     showSetupInstructions() {
-        if (config.strava.clientId === 'YOUR_STRAVA_CLIENT_ID_HERE') {
-            console.warn(`
-🔧 SETUP REQUIRED:
-
-To connect with Strava, you need to:
-
-1. Go to https://www.strava.com/settings/api
-2. Create an application if you haven't already
-3. Set "Authorization Callback Domain" to: localhost:3000
-4. Copy your Client ID
-5. Update src/config/app-config.js with your Client ID
-
-Current callback domain setting should be: localhost:3000
-
-💡 Alternatively, you can upload GPX files directly without Strava!
-            `);
-        }
+        // Server-side auth via Cloudflare Workers handles all Strava credentials
+        // No client-side configuration needed
+        console.log('💡 Ready to use! Upload GPX files or connect with Strava via the Cloudflare Worker.');
     }
 
     displayWelcomeMessage() {

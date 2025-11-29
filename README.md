@@ -4,15 +4,43 @@ GPS route aggregation and 3D visualization web application.
 
 ## Development
 
-Install dependencies:
+### Environment Setup
+
+1. **Install dependencies:**
 ```bash
 npm install
 ```
 
-Run development server:
+2. **Configure Strava OAuth (optional - only needed for Strava integration):**
+
+Create a `.env` file in the project root with your Strava API credentials:
+
+```bash
+STRAVA_CLIENT_ID=your_client_id_here
+STRAVA_CLIENT_SECRET=your_client_secret_here
+```
+
+To get these credentials:
+- Go to https://www.strava.com/settings/api
+- Create an application if you haven't already
+- Set "Authorization Callback Domain" to: `localhost` (for local dev)
+- Copy your Client ID and Client Secret
+
+**Note:** The `.env` file is for local development only. For production deployment to Cloudflare, set these as secrets:
+
+```bash
+npx wrangler secret put STRAVA_CLIENT_ID
+npx wrangler secret put STRAVA_CLIENT_SECRET
+```
+
+3. **Run development server:**
 ```bash
 npm run dev
 ```
+
+The app works with or without Strava integration - you can upload GPX files directly!
+
+### Build Commands
 
 Build for production:
 ```bash
@@ -32,9 +60,10 @@ npm run preview
 - ✅ Basic web application structure
 - ✅ Modern CSS styling
 - ✅ Development environment setup
-- ⏳ Strava OAuth integration (Phase 1)
-- ⏳ GPX parsing and aggregation (Phase 2)
-- ⏳ 3D visualization (Phase 3)
+- ✅ Strava OAuth integration (server-side via Cloudflare Workers)
+- ✅ GPX parsing and route aggregation
+- ✅ 3D visualization with Three.js
+- ✅ 2D map visualization with Leaflet
 
 ## Features (Planned)
 

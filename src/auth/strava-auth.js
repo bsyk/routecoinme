@@ -1,9 +1,10 @@
-// Strava OAuth Configuration and Management
-// Uses HTTP-only cookies via Cloudflare Workers for security
+// Strava OAuth Authentication Client
+// Works with Cloudflare Worker for server-side OAuth flow
+// All credentials (client ID & secret) are stored server-side in worker env vars
+// Uses HTTP-only cookies for secure token storage
 
 class StravaAuth {
     constructor() {
-        this.clientId = null;
         this.workerBaseUrl = window.location.origin; // Path-based API routing
         this.init();
     }
@@ -19,14 +20,10 @@ class StravaAuth {
         this.checkExistingAuth();
     }
 
-    setClientId(clientId) {
-        this.clientId = clientId;
-    }
-
     // Start the OAuth flow via Cloudflare Worker
     authenticate() {
         console.log('🔐 Initiating Strava authentication via worker...');
-        const authUrl = `${this.workerBaseUrl}/api/auth/strava/login`;
+        const authUrl = `${this.workerBaseUrl}/api/auth/login`;
         const returnUrl = encodeURIComponent(window.location.origin + '/auth/callback');
         window.location.href = `${authUrl}?return_url=${returnUrl}`;
     }

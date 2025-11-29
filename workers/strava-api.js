@@ -1,6 +1,17 @@
 // Cloudflare Worker for RouteCoinMe Strava Integration
-// Stateless server-side processing for Strava API calls
-// Maintains privacy by not storing or logging any user data
+// Handles server-side OAuth flow and API proxying for Strava
+// 
+// IMPORTANT: Set these environment variables:
+//   - STRAVA_CLIENT_ID: Your Strava application client ID
+//   - STRAVA_CLIENT_SECRET: Your Strava application client secret
+// 
+// Local dev: Use .env file (automatically loaded by Vite)
+// Production: Use Cloudflare secrets (npx wrangler secret put <NAME>)
+//
+// Security features:
+//   - HTTP-only cookies for token storage (not accessible to JavaScript)
+//   - Server-side token exchange (client secret never exposed)
+//   - Stateless processing (no user data stored on server)
 
 export default {
     async fetch(request, env, ctx) {
