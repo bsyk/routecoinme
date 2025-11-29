@@ -1,0 +1,14 @@
+{
+  "name": "routecoinme-strava-worker",
+  "main": "workers/strava-api.js",
+  "compatibility_date": "2025-11-29",
+  "compatibility_flags": ["nodejs_compat"],
+  
+  "routes": [
+    { 
+      "pattern": "routecoin.me/api/*", 
+      "zone_name": "routecoin.me", 
+      "custom_domain": true 
+    }
+  ]
+}

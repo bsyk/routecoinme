@@ -36,5 +36,5 @@ export const isDevelopment = () => {
 
 // Get appropriate API base URL
 export const getApiBaseUrl = () => {
-    return isDevelopment() ? config.development.apiBaseUrl : window.location.origin;
+    return window.location.origin;
 };

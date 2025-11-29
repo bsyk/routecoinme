@@ -1,9 +1,10 @@
 // Strava OAuth Configuration and Management
+// Uses HTTP-only cookies via Cloudflare Workers for security
+
 class StravaAuth {
     constructor() {
         this.clientId = null;
-        this.redirectUri = `${window.location.origin}/auth/callback`;
-        this.scope = 'read,activity:read_all';
+        this.workerBaseUrl = window.location.origin; // Path-based API routing
         this.init();
     }
 
@@ -14,7 +15,7 @@ class StravaAuth {
             return;
         }
 
-        // Check for existing token
+        // Check for existing authentication
         this.checkExistingAuth();
     }
 
@@ -22,123 +23,150 @@ class StravaAuth {
         this.clientId = clientId;
     }
 
-    // Start the OAuth flow
+    // Start the OAuth flow via Cloudflare Worker
     authenticate() {
-        if (!this.clientId) {
-            console.error('Strava Client ID not set. Please configure your Strava app credentials.');
-            alert('Strava Client ID not configured. Please check the console for setup instructions.');
-            return;
-        }
-
-        const authUrl = new URL('https://www.strava.com/oauth/authorize');
-        authUrl.searchParams.set('client_id', this.clientId);
-        authUrl.searchParams.set('redirect_uri', this.redirectUri);
-        authUrl.searchParams.set('response_type', 'code');
-        authUrl.searchParams.set('approval_prompt', 'auto');
-        authUrl.searchParams.set('scope', this.scope);
-
-        console.log('🔐 Redirecting to Strava for authentication...');
-        window.location.href = authUrl.toString();
+        console.log('🔐 Initiating Strava authentication via worker...');
+        const authUrl = `${this.workerBaseUrl}/api/auth/strava/login`;
+        const returnUrl = encodeURIComponent(window.location.origin + '/auth/callback');
+        window.location.href = `${authUrl}?return_url=${returnUrl}`;
     }
 
-    // Handle the OAuth callback
+    // Handle the OAuth callback from Cloudflare Worker
     async handleCallback() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get('code');
-        const error = urlParams.get('error');
-
-        if (error) {
-            console.error('Strava OAuth error:', error);
-            alert('Authentication failed. Please try again.');
-            window.history.replaceState({}, document.title, '/');
-            return;
-        }
-
-        if (!code) {
-            console.error('No authorization code received');
-            window.history.replaceState({}, document.title, '/');
-            return;
-        }
-
         try {
-            console.log('🔄 Exchanging authorization code for access token...');
-            await this.exchangeCodeForToken(code);
+            console.log('� Processing auth callback...');
             
-            // Redirect back to main app
-            window.history.replaceState({}, document.title, '/');
-            window.location.reload();
+            // Check if authentication was successful by calling the worker
+            const response = await fetch(`${this.workerBaseUrl}/api/auth/status`, {
+                credentials: 'include' // Include HTTP-only cookies
+            });
+
+            if (response.ok) {
+                const authData = await response.json();
+                
+                // Store non-sensitive data in localStorage for UI state
+                localStorage.setItem('rcm_was_authenticated', 'true');
+                if (authData.athlete) {
+                    localStorage.setItem('rcm_athlete_info', JSON.stringify(authData.athlete));
+                }
+
+                console.log('✅ Strava authentication successful');
+                
+                // Clean up URL and reload
+                window.history.replaceState({}, document.title, '/');
+                window.location.reload();
+            } else {
+                console.error('❌ Authentication failed');
+                alert('Authentication failed. Please try again.');
+                window.history.replaceState({}, document.title, '/');
+            }
         } catch (error) {
-            console.error('Token exchange failed:', error);
-            alert('Authentication failed during token exchange. Please try again.');
+            console.error('❌ Auth callback error:', error);
+            alert('Authentication error. Please try again.');
             window.history.replaceState({}, document.title, '/');
         }
     }
 
-    // Exchange authorization code for access token
-    async exchangeCodeForToken(code) {
-        // For now, we'll store this temporarily
-        // In a real app, this would go through your backend
-        console.log('📝 Authorization code received:', code);
-        
-        // Simulate token storage (replace with actual API call to your backend)
-        const mockTokenData = {
-            access_token: 'mock_access_token_' + Date.now(),
-            refresh_token: 'mock_refresh_token_' + Date.now(),
-            expires_at: Date.now() + (6 * 60 * 60 * 1000), // 6 hours from now
-            athlete: {
-                id: 'mock_athlete_id',
-                firstname: 'Demo',
-                lastname: 'User'
-            }
-        };
-
-        this.storeTokens(mockTokenData);
-        console.log('✅ Authentication successful!');
-    }
-
-    // Store tokens securely
-    storeTokens(tokenData) {
-        // Encrypt tokens before storing (implement proper encryption in production)
-        localStorage.setItem('strava_tokens', JSON.stringify(tokenData));
-        localStorage.setItem('strava_auth_time', Date.now().toString());
-    }
-
-    // Get stored tokens
-    getStoredTokens() {
-        const tokens = localStorage.getItem('strava_tokens');
-        return tokens ? JSON.parse(tokens) : null;
-    }
-
-    // Check if user is authenticated
-    isAuthenticated() {
-        const tokens = this.getStoredTokens();
-        if (!tokens) return false;
-
-        // Check if token is expired
-        if (Date.now() >= tokens.expires_at) {
-            this.clearTokens();
+    // Check if user is authenticated by querying the worker
+    async isAuthenticated() {
+        try {
+            const response = await fetch(`${this.workerBaseUrl}/api/auth/status`, {
+                credentials: 'include'
+            });
+            return response.ok;
+        } catch (error) {
+            console.warn('⚠️ Auth check failed:', error);
             return false;
         }
-
-        return true;
     }
 
-    // Get current athlete info
+    // Get athlete information from localStorage (non-sensitive data)
     getAthleteInfo() {
-        const tokens = this.getStoredTokens();
-        return tokens ? tokens.athlete : null;
+        try {
+            const athleteData = localStorage.getItem('rcm_athlete_info');
+            return athleteData ? JSON.parse(athleteData) : null;
+        } catch (error) {
+            console.warn('⚠️ Failed to parse athlete info:', error);
+            return null;
+        }
+    }
+
+    // Check if user was previously authenticated (for UI hints)
+    wasPreviouslyAuthenticated() {
+        return localStorage.getItem('rcm_was_authenticated') === 'true';
     }
 
     // Check for existing authentication on page load
-    checkExistingAuth() {
-        if (this.isAuthenticated()) {
-            const athlete = this.getAthleteInfo();
+    async checkExistingAuth() {
+        const isAuthenticated = await this.isAuthenticated();
+        const athlete = this.getAthleteInfo();
+
+        if (isAuthenticated && athlete) {
             console.log('✅ User already authenticated:', athlete);
             this.updateUIForAuthenticatedState(athlete);
         } else {
             console.log('ℹ️ User not authenticated');
+            if (this.wasPreviouslyAuthenticated()) {
+                console.log('💡 User was previously authenticated but session expired');
+            }
             this.updateUIForUnauthenticatedState();
         }
+    }
+
+    // Make API calls to Strava via Cloudflare Worker
+    async callStravaAPI(endpoint, options = {}) {
+        try {
+            const response = await fetch(`${this.workerBaseUrl}/api/strava${endpoint}`, {
+                ...options,
+                credentials: 'include', // Include HTTP-only cookies
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                }
+            });
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    console.log('🔐 Authentication required');
+                    this.clearLocalAuthState();
+                    throw new Error('Authentication required');
+                }
+                throw new Error(`API call failed: ${response.status}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('❌ Strava API call failed:', error);
+            throw error;
+        }
+    }
+
+    // Helper methods for Strava API calls
+    async getActivities(options = {}) {
+        const params = new URLSearchParams();
+        if (options.page) params.append('page', options.page);
+        if (options.per_page) params.append('per_page', options.per_page);
+        if (options.before) params.append('before', options.before);
+        if (options.after) params.append('after', options.after);
+
+        const endpoint = `/activities${params.toString() ? '?' + params.toString() : ''}`;
+        return this.callStravaAPI(endpoint);
+    }
+
+    async getActivity(activityId) {
+        return this.callStravaAPI(`/activity/${activityId}`);
+    }
+
+    async getActivityStreams(activityId, streamTypes = ['latlng', 'altitude', 'time']) {
+        const params = new URLSearchParams();
+        params.append('keys', streamTypes.join(','));
+        params.append('key_by_type', 'true');
+
+        return this.callStravaAPI(`/streams/${activityId}?${params.toString()}`);
+    }
+
+    async getAthlete() {
+        return this.callStravaAPI('/athlete');
     }
 
     // Update UI for authenticated user
@@ -151,7 +179,6 @@ class StravaAuth {
             authBtn.onclick = () => this.showUserMenu();
         }
 
-        // Show authenticated features
         this.showAuthenticatedFeatures();
     }
 
@@ -173,7 +200,7 @@ class StravaAuth {
             Authenticated as: ${athlete.firstname} ${athlete.lastname}
             
             Options:
-            - View Activities (coming soon)
+            - View Activities
             - Logout
         `;
         
@@ -185,7 +212,6 @@ class StravaAuth {
     // Show features available to authenticated users
     showAuthenticatedFeatures() {
         console.log('🎉 Showing authenticated features...');
-        // Update demo area with authenticated content
         const demoArea = document.querySelector('.demo-placeholder');
         if (demoArea) {
             demoArea.innerHTML = `
@@ -193,7 +219,10 @@ class StravaAuth {
                 <p>You're now authenticated and ready to fetch your activities.</p>
                 <div class="auth-features">
                     <button class="btn btn-primary" onclick="window.stravaAuth.fetchActivities()">
-                        📊 Fetch Activities
+                        📊 Fetch Recent Activities
+                    </button>
+                    <button class="btn btn-success" onclick="window.stravaAuth.showImportDialog()">
+                        📥 Import Activities
                     </button>
                     <button class="btn btn-secondary" onclick="window.stravaAuth.showSettings()">
                         ⚙️ Settings
@@ -203,28 +232,152 @@ class StravaAuth {
         }
     }
 
-    // Fetch user activities (placeholder)
+    // Fetch user activities
     async fetchActivities() {
         console.log('📊 Fetching Strava activities...');
-        alert('Activity fetching will be implemented in the next phase!\n\nThis will integrate with the Strava API to fetch your GPX data.');
+        
+        try {
+            const activities = await this.getActivities({ per_page: 10 });
+            console.log(`✅ Fetched ${activities.length} activities`);
+            this.showActivitiesList(activities);
+        } catch (error) {
+            console.error('❌ Error fetching activities:', error);
+            if (error.message.includes('Authentication required')) {
+                this.authenticate();
+            } else {
+                alert(`Failed to fetch activities: ${error.message}`);
+            }
+        }
     }
 
-    // Show settings (placeholder)
+    // Show activities list in UI
+    showActivitiesList(activities) {
+        const demoArea = document.querySelector('.demo-placeholder');
+        if (demoArea) {
+            const activitiesHTML = activities.map(activity => `
+                <div class="activity-item" style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px;">
+                    <strong>${activity.name}</strong>
+                    <br>
+                    <small>${activity.type} • ${(activity.distance / 1000).toFixed(1)}km • ${activity.start_date_local}</small>
+                    <br>
+                    <button class="btn btn-sm btn-primary" onclick="window.stravaAuth.importActivity('${activity.id}')">
+                        📥 Import
+                    </button>
+                </div>
+            `).join('');
+
+            demoArea.innerHTML = `
+                <h3>📊 Recent Strava Activities</h3>
+                <div class="activities-list" style="max-height: 400px; overflow-y: auto;">
+                    ${activitiesHTML}
+                </div>
+                <div class="activities-actions">
+                    <button class="btn btn-secondary" onclick="window.stravaAuth.showAuthenticatedFeatures()">
+                        ← Back to Dashboard
+                    </button>
+                </div>
+            `;
+        }
+    }
+
+    // Import a single activity
+    async importActivity(activityId) {
+        try {
+            console.log(`📥 Importing activity ${activityId}...`);
+            
+            // Get activity details and streams
+            const [activity, streams] = await Promise.all([
+                this.getActivity(activityId),
+                this.getActivityStreams(activityId)
+            ]);
+
+            // Convert to route format
+            const route = this.convertActivityToRoute(activity, streams);
+            
+            // Add to file uploader
+            if (window.fileUploader) {
+                window.fileUploader.addRoute(route);
+                console.log('✅ Activity imported successfully');
+                alert(`Successfully imported: ${route.name}`);
+            } else {
+                console.error('❌ File uploader not available');
+                alert('Error: File uploader not available');
+            }
+            
+        } catch (error) {
+            console.error('❌ Error importing activity:', error);
+            alert(`Failed to import activity: ${error.message}`);
+        }
+    }
+
+    // Convert Strava activity to route format
+    convertActivityToRoute(activity, streams) {
+        const { latlng, altitude, time } = streams;
+        
+        if (!latlng || !latlng.data) {
+            throw new Error('No GPS data available for this activity');
+        }
+
+        const points = latlng.data.map((coord, index) => ({
+            lat: coord[0],
+            lon: coord[1],
+            elevation: altitude && altitude.data ? altitude.data[index] || 0 : 0,
+            timestamp: time && time.data ? new Date(activity.start_date).getTime() + (time.data[index] * 1000) : null
+        }));
+
+        return {
+            id: `strava_${activity.id}`,
+            filename: `${activity.name}.gpx`,
+            name: activity.name,
+            type: activity.type,
+            points: points,
+            distance: activity.distance,
+            elevationGain: activity.total_elevation_gain || 0,
+            duration: activity.elapsed_time,
+            startTime: new Date(activity.start_date),
+            source: 'strava',
+            metadata: {
+                stravaId: activity.id,
+                imported: new Date().toISOString()
+            }
+        };
+    }
+
+    // Show import dialog
+    showImportDialog() {
+        alert('Bulk import dialog coming soon!\n\nThis will allow you to:\n- Select multiple activities\n- Filter by date range\n- Choose activity types');
+    }
+
+    // Show settings
     showSettings() {
         alert('Settings panel coming soon!\n\nThis will include:\n- Privacy preferences\n- Data storage options\n- Export settings');
     }
 
     // Logout user
-    logout() {
-        console.log('👋 Logging out...');
-        this.clearTokens();
-        window.location.reload();
+    async logout() {
+        try {
+            console.log('👋 Logging out...');
+            
+            await fetch(`${this.workerBaseUrl}/api/auth/logout`, {
+                method: 'POST',
+                credentials: 'include'
+            });
+
+            this.clearLocalAuthState();
+            console.log('🗑️ Logged out successfully');
+            window.location.reload();
+        } catch (error) {
+            console.error('❌ Logout failed:', error);
+            // Still clear local state even if server call fails
+            this.clearLocalAuthState();
+            window.location.reload();
+        }
     }
 
-    // Clear stored tokens
-    clearTokens() {
-        localStorage.removeItem('strava_tokens');
-        localStorage.removeItem('strava_auth_time');
+    // Clear local authentication state
+    clearLocalAuthState() {
+        localStorage.removeItem('rcm_was_authenticated');
+        localStorage.removeItem('rcm_athlete_info');
     }
 }
 
