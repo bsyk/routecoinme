@@ -270,6 +270,9 @@ async function handleStravaAPI(request, url, corsHeaders, env) {
         case path.startsWith('activity/'):
             const activityId = path.split('/')[1];
             return await getActivity(authToken, activityId, corsHeaders);
+        case path.startsWith('import-activity/'):
+            const importActivityId = path.split('/')[1];
+            return await importActivityAsRoute(authToken, importActivityId, corsHeaders);
         case path.startsWith('streams/'):
             const streamActivityId = path.split('/')[1];
             return await getActivityStreams(authToken, streamActivityId, url.searchParams, corsHeaders);
@@ -537,4 +540,125 @@ async function getActivityStreams(authToken, activityId, searchParams, corsHeade
             },
         });
     }
+}
+
+// Import activity as route (fetch activity + streams, convert to route format)
+async function importActivityAsRoute(authToken, activityId, corsHeaders) {
+    console.log(`📥 Importing activity ${activityId} as route`);
+
+    try {
+        // Fetch both activity details and streams in parallel
+        const [activityResponse, streamsResponse] = await Promise.all([
+            fetch(`https://www.strava.com/api/v3/activities/${activityId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Accept': 'application/json',
+                },
+            }),
+            fetch(`https://www.strava.com/api/v3/activities/${activityId}/streams?keys=latlng,altitude,time&key_by_type=true`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Accept': 'application/json',
+                },
+            })
+        ]);
+
+        if (!activityResponse.ok) {
+            const errorData = await activityResponse.text();
+            console.error('❌ Failed to fetch activity:', activityResponse.status, errorData);
+            return new Response(JSON.stringify({
+                error: 'Strava API error',
+                status: activityResponse.status,
+                message: `Failed to fetch activity ${activityId}`
+            }), {
+                status: activityResponse.status,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            });
+        }
+
+        if (!streamsResponse.ok) {
+            const errorData = await streamsResponse.text();
+            console.error('❌ Failed to fetch streams:', streamsResponse.status, errorData);
+            return new Response(JSON.stringify({
+                error: 'Strava API error',
+                status: streamsResponse.status,
+                message: `Failed to fetch GPS data for activity ${activityId}`
+            }), {
+                status: streamsResponse.status,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            });
+        }
+
+        const activity = await activityResponse.json();
+        const streams = await streamsResponse.json();
+
+        // Convert to route format
+        const route = convertStravaActivityToRoute(activity, streams);
+
+        console.log(`✅ Activity ${activityId} converted to route successfully`);
+
+        return new Response(JSON.stringify(route), {
+            status: 200,
+            headers: {
+                'Content-Type': 'application/json',
+                ...corsHeaders,
+            },
+        });
+
+    } catch (error) {
+        console.error('❌ Error importing activity as route:', error);
+        return new Response(JSON.stringify({
+            error: 'Import error',
+            message: error.message || 'Failed to import activity'
+        }), {
+            status: 500,
+            headers: {
+                'Content-Type': 'application/json',
+                ...corsHeaders,
+            },
+        });
+    }
+}
+
+// Convert Strava activity and streams to route format
+function convertStravaActivityToRoute(activity, streams) {
+    const { latlng, altitude, time } = streams;
+    
+    if (!latlng || !latlng.data) {
+        throw new Error('No GPS data available for this activity');
+    }
+
+    // Map GPS points with elevation and timestamps
+    const points = latlng.data.map((coord, index) => ({
+        lat: coord[0],
+        lon: coord[1],
+        elevation: altitude?.data ? altitude.data[index] || 0 : 0,
+        timestamp: time?.data ? new Date(activity.start_date).getTime() + (time.data[index] * 1000) : null
+    }));
+
+    // Return route in the format expected by the client
+    return {
+        id: `strava_${activity.id}`,
+        filename: `${activity.name}.gpx`,
+        name: activity.name,
+        type: activity.type,
+        points: points,
+        distance: activity.distance / 1000, // Convert meters to km
+        elevationGain: activity.total_elevation_gain || 0,
+        duration: activity.elapsed_time,
+        startTime: new Date(activity.start_date).toISOString(),
+        source: 'strava',
+        metadata: {
+            stravaId: activity.id,
+            imported: new Date().toISOString()
+        }
+    };
 }

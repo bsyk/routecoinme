@@ -150,18 +150,6 @@ class StravaAuth {
         return this.callStravaAPI(endpoint);
     }
 
-    async getActivity(activityId) {
-        return this.callStravaAPI(`/activity/${activityId}`);
-    }
-
-    async getActivityStreams(activityId, streamTypes = ['latlng', 'altitude', 'time']) {
-        const params = new URLSearchParams();
-        params.append('keys', streamTypes.join(','));
-        params.append('key_by_type', 'true');
-
-        return this.callStravaAPI(`/streams/${activityId}?${params.toString()}`);
-    }
-
     async getAthlete() {
         return this.callStravaAPI('/athlete');
     }
@@ -353,14 +341,13 @@ class StravaAuth {
         try {
             console.log(`📥 Importing activity ${activityId}...`);
             
-            // Get activity details and streams
-            const [activity, streams] = await Promise.all([
-                this.getActivity(activityId),
-                this.getActivityStreams(activityId)
-            ]);
-
-            // Convert to route format
-            const route = this.convertActivityToRoute(activity, streams);
+            // Fetch the activity as a route from the worker (does all the heavy lifting)
+            const route = await this.callStravaAPI(`/import-activity/${activityId}`);
+            
+            // Parse startTime back to Date object if needed
+            if (route.startTime) {
+                route.startTime = new Date(route.startTime);
+            }
             
             // Add to file uploader
             if (window.fileUploader) {
@@ -385,39 +372,6 @@ class StravaAuth {
             console.error('❌ Error importing activity:', error);
             this.showNotification(`Failed to import activity: ${error.message}`, 'error');
         }
-    }
-
-    // Convert Strava activity to route format
-    convertActivityToRoute(activity, streams) {
-        const { latlng, altitude, time } = streams;
-        
-        if (!latlng || !latlng.data) {
-            throw new Error('No GPS data available for this activity');
-        }
-
-        const points = latlng.data.map((coord, index) => ({
-            lat: coord[0],
-            lon: coord[1],
-            elevation: altitude?.data ? altitude.data[index] || 0 : 0,
-            timestamp: time?.data ? new Date(activity.start_date).getTime() + (time.data[index] * 1000) : null
-        }));
-
-        return {
-            id: `strava_${activity.id}`,
-            filename: `${activity.name}.gpx`,
-            name: activity.name,
-            type: activity.type,
-            points: points,
-            distance: activity.distance / 1000, // Convert to km from meters
-            elevationGain: activity.total_elevation_gain || 0,
-            duration: activity.elapsed_time,
-            startTime: new Date(activity.start_date),
-            source: 'strava',
-            metadata: {
-                stravaId: activity.id,
-                imported: new Date().toISOString()
-            }
-        };
     }
 
     // Show import dialog
