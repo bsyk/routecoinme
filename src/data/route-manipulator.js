@@ -141,8 +141,18 @@ class RouteManipulator {
         // First route becomes the initial accumulator, iteration starts with second route
         return routes.reduce((aggregatedRoute, currentRoute) => {
             console.log(`🔗 Connecting route: ${currentRoute.filename || 'Unnamed'}`);
-            return this._connectTwoRoutes(aggregatedRoute, currentRoute);
+            const combined = this._connectTwoRoutes(aggregatedRoute, currentRoute);
+            if (combined.points.length > 100000) {
+                console.warn(`⚠️ Combined route exceeds 100,000 points, downsampling`);
+                return this.resampleRoute(combined, 10000);
+            }
+            return combined;
         });
+    }
+
+    aggregateAndResampleRoutes(routes) {
+        const aggregatedRoute = this.aggregateRoutes(routes);
+        return this.resampleRoute(aggregatedRoute, 10000);
     }
 
     // 5. Convert a route into a cumulative elevation route
@@ -165,16 +175,13 @@ class RouteManipulator {
 
                 const newCumulative = cumulative + gain;
 
+                // Mutate array to avoid lots of copying
+                points.push({ ...point, elevation: newCumulative });
+
                 return {
                     cumulative: newCumulative,
                     lastElevation: currentElevation,
-                    points: [
-                        ...points,
-                        {
-                            ...point,
-                            elevation: newCumulative,
-                        }
-                    ]
+                    points,
                 };
             },
             { cumulative: 0, lastElevation: null, points: [] }
@@ -184,15 +191,11 @@ class RouteManipulator {
 
         // Update route metadata
         cumulativeRoute.filename = `${route.filename || 'Route'} (Cumulative)`;
-        if (cumulativeRoute.metadata) {
-            cumulativeRoute.metadata.elevationMode = 'cumulative';
-            cumulativeRoute.metadata.originalElevationGain = route.elevationGain;
-        } else {
-            cumulativeRoute.metadata = {
-                elevationMode: 'cumulative',
-                originalElevationGain: route.elevationGain
-            };
-        }
+        cumulativeRoute.metadata = {
+            ...(cumulativeRoute.metadata || {}),
+            elevationMode: 'cumulative',
+            originalElevationGain: route.elevationGain
+        };
 
         console.log(`✅ Converted to cumulative elevation: ${cumulativeRouteData.cumulative.toFixed(1)}m total climbing`);
 
@@ -438,10 +441,10 @@ class RouteManipulator {
             
             // IMPORTANT: Keep original route statistics - predetermined path only provides coordinates!
             // The predetermined path is just a coordinate template, not real route data
-            overlayedRoute.distance = resampledRoute.distance; // Original aggregated distance
-            overlayedRoute.elevationGain = resampledRoute.elevationGain; // Original aggregated elevation gain
-            overlayedRoute.elevationLoss = resampledRoute.elevationLoss; // Original aggregated elevation loss
-            overlayedRoute.duration = resampledRoute.duration; // Original aggregated duration
+            overlayedRoute.distance = route.distance; // Original aggregated distance
+            overlayedRoute.elevationGain = route.elevationGain; // Original aggregated elevation gain
+            overlayedRoute.elevationLoss = route.elevationLoss; // Original aggregated elevation loss
+            overlayedRoute.duration = route.duration; // Original aggregated duration
             
             console.log(`✅ Applied predetermined path: ${overlayedPoints.length} points`);
             console.log(`📊 Preserved original stats: ${overlayedRoute.distance.toFixed(1)}km distance, ${overlayedRoute.elevationGain.toFixed(1)}m gain, ${overlayedRoute.elevationLoss.toFixed(1)}m loss`);
@@ -484,7 +487,7 @@ class RouteManipulator {
         const scaledRoute = this._cloneRoute(route);
         
         scaledRoute.points = route.points.map(point => {
-            const originalElevation = point.elevation || 0;
+            const originalElevation = point.elevation || currentMinElevation;
             
             // Scale relative to the minimum elevation
             const relativeElevation = originalElevation - currentMinElevation;
@@ -509,16 +512,10 @@ class RouteManipulator {
             originalMaxElevation: currentMaxElevation
         };
         
-        // Recalculate elevation statistics
+        // Recalculate bounds
         const newBounds = this.getRouteBounds(scaledRoute);
-        const stats = this.calculateRouteStats(scaledRoute);
-        
-        scaledRoute.elevationGain = stats.elevationGain;
-        scaledRoute.elevationLoss = stats.elevationLoss;
-        
         console.log(`✅ Elevation scaled from ${currentElevationRange.toFixed(1)}m to ${newBounds.elevationRange.toFixed(1)}m range`);
         console.log(`📊 New elevation: ${newBounds.minElevation.toFixed(1)}m to ${newBounds.maxElevation.toFixed(1)}m`);
-        console.log(`⛰️ Scaled elevation gain: ${scaledRoute.elevationGain.toFixed(1)}m, loss: ${scaledRoute.elevationLoss.toFixed(1)}m`);
         
         return scaledRoute;
     }
@@ -686,8 +683,8 @@ class RouteManipulator {
         console.log(`🔗 Connecting ${firstRoute.filename || 'Route1'} (${firstRoute.points.length} points) to ${secondRoute.filename || 'Route2'} (${secondRoute.points.length} points)`);
         
         // Get the end point of the first route
-        const firstRouteEnd = firstRoute.points[firstRoute.points.length - 1];
-        
+        const firstRouteEnd = firstRoute.points.at(-1);
+
         // Relocate second route to start at the end of the first route
         const relocatedSecondRoute = this.relocateRouteToPosition(
             secondRoute,
@@ -701,11 +698,14 @@ class RouteManipulator {
             ...firstRoute.points,
             ...relocatedSecondRoute.points.slice(1)
         ];
+
+        // Count the total routes combined
+        const totalRoutesCombined = (firstRoute.metadata?.sourceCount || 1) + (secondRoute.metadata?.sourceCount || 1);
         
         // Create combined route
         const combinedRoute = {
             id: this._generateRouteId(),
-            filename: `${firstRoute.filename || 'Route1'} + ${secondRoute.filename || 'Route2'}`,
+            filename: `Combined_${totalRoutesCombined}_Routes.gpx`,
             points: combinedPoints,
             distance: (firstRoute.distance || 0) + (secondRoute.distance || 0),
             elevationGain: (firstRoute.elevationGain || 0) + (secondRoute.elevationGain || 0),
@@ -714,6 +714,7 @@ class RouteManipulator {
             uploadTime: firstRoute.uploadTime || Date.now(),
             metadata: {
                 combined: true,
+                sourceCount: totalRoutesCombined,
                 sourceRoutes: [
                     {
                         id: firstRoute.id,
@@ -732,7 +733,7 @@ class RouteManipulator {
         
         console.log(`✅ Routes connected: ${combinedPoints.length} total points`);
         
-        return this.resampleRoute(combinedRoute, 10000);
+        return combinedRoute;
     }
 
     // Private helper: Deep clone a route object

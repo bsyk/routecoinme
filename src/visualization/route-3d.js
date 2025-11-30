@@ -574,14 +574,10 @@ class Route3DVisualization {
         console.log(`🔄 Converting ${points.length} GPS points to 3D coordinates...`);
         
         // Validate that points have required properties
-        const validPoints = points.filter(point => 
-            point && 
-            typeof point.lat === 'number' && 
-            typeof point.lon === 'number' && 
-            !isNaN(point.lat) && 
-            !isNaN(point.lon)
+        const validPoints = points.filter(p =>
+            Number.isFinite(p?.lat) && Number.isFinite(p?.lon)
         );
-        
+
         if (validPoints.length === 0) {
             console.warn('⚠️ No valid GPS points found!');
             return [];
@@ -603,16 +599,20 @@ class Route3DVisualization {
         console.log(`📏 GPS center: ${centerLat.toFixed(6)}, ${centerLon.toFixed(6)}`);
         console.log(`📏 Elevation range: ${minElevation}m to ${maxElevation}m`);
 
+        const METERS_PER_DEG_LAT = 110540;
+        const METERS_PER_DEG_LON = 111320;
+        const MIN_HEIGHT = 50;
+
         // Convert to local coordinate system (meters from center)
         const points3D = validPoints.map((point, index) => {
             // Convert lat/lon to approximate meters (rough conversion)
-            const x = (point.lon - centerLon) * 111320 * Math.cos(centerLat * Math.PI / 180);
-            const z = (centerLat - point.lat) * 110540; // Flip Z for typical coordinate system
+            const x = (point.lon - centerLon) * METERS_PER_DEG_LON * Math.cos(centerLat * Math.PI / 180);
+            const z = (centerLat - point.lat) * METERS_PER_DEG_LAT; // Flip Z for typical coordinate system
             
             // Ensure elevation is always above ground with minimum offset
             const rawElevation = point.elevation || 0;
             const normalizedElevation = (rawElevation - minElevation) * elevationExaggeration;
-            const y = Math.max(normalizedElevation + 50, 50); // Minimum 50 units above ground
+            const y = Math.max(normalizedElevation + MIN_HEIGHT, MIN_HEIGHT); // Minimum 50 units above ground
 
             return new THREE.Vector3(x, y, z);
         }).filter(point => !isNaN(point.x) && !isNaN(point.y) && !isNaN(point.z));

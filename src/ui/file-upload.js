@@ -909,7 +909,7 @@ class FileUploadHandler {
         console.log(`📊 Original combined stats before aggregation: ${originalStats.distance.toFixed(1)}km, ${originalStats.elevationGain.toFixed(1)}m gain`);  
 
         // Use RouteManipulator to aggregate routes
-        let aggregatedRoute = this.routeManipulator.aggregateRoutes(routes);
+        let aggregatedRoute = this.routeManipulator.aggregateAndResampleRoutes(routes);
         
         // Apply elevation mode processing
         if (elevationMode === 'cumulative') {
@@ -979,7 +979,7 @@ class FileUploadHandler {
 
 
         // Step 1: Spatially aggregate routes using RouteManipulator
-        let spatiallyAggregatedRoute = this.routeManipulator.aggregateRoutes(routes);
+        let spatiallyAggregatedRoute = this.routeManipulator.aggregateAndResampleRoutes(routes);
         
         // Step 2: Find time range across all routes
         const allTimestamps = routes.flatMap(route => 
@@ -1081,7 +1081,7 @@ class FileUploadHandler {
 
 
         // Step 1: Aggregate routes using RouteManipulator (distance-based)
-        let aggregatedRoute = this.routeManipulator.aggregateRoutes(routes);
+        let aggregatedRoute = this.routeManipulator.aggregateAndResampleRoutes(routes);
         
         // Step 2: Apply elevation mode processing  
         if (elevationMode === 'cumulative') {
