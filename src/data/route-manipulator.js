@@ -39,16 +39,13 @@ class RouteManipulator {
     }
 
     // 2. Relocate a route to normalized coordinates, centered on (0,0) and aligned to 0 on the Y axis
-    normalizeRoute(route, options = {}) {
+    normalizeRoute(route) {
         if (!route.points || route.points.length === 0) {
             throw new Error('Route must have points to normalize');
         }
 
         console.log(`🎯 Normalizing route: ${route.filename || 'Unnamed'}`);
 
-        const metadataNormalization = route.metadata?.normalization || {};
-        const anchorConfig = options.anchor ?? metadataNormalization.anchor;
-        
         // Get route bounds using utility function
         const bounds = this.getRouteBounds(route);
         
@@ -59,11 +56,14 @@ class RouteManipulator {
 
         console.log(`📊 Current center: (${currentCenterLat.toFixed(6)}, ${currentCenterLon.toFixed(6)}, ${currentMinElevation.toFixed(1)}m)`);
         
-        // Calculate route's start position relative to its anchor
-        const { relativeStartLat, relativeStartLon, relativeStartElevation } = this._selectAnchorPoint(route, anchorConfig);
-        
+        // Calculate route's start position relative to its center
+        const startPoint = route.points[0];
+        const relativeStartLat = startPoint.lat - currentCenterLat;
+        const relativeStartLon = startPoint.lon - currentCenterLon;
+        const relativeStartElevation = (startPoint.elevation || 0) - currentMinElevation;
+
         // Target position: start point should be at (relativeStartLat, relativeStartLon, relativeStartElevation)
-        // This centers the route on lat=0,lon=0 while preserving the route's internal structure
+        // This centers the route on lat=0 while preserving the route's internal structure
         const targetStartLat = this.centerLat + relativeStartLat;
         const targetStartLon = this.centerLon + relativeStartLon;
         const targetStartElevation = this.centerElevation + relativeStartElevation;
@@ -71,75 +71,9 @@ class RouteManipulator {
         // Use relocateRouteToPosition to move start point to normalized position
         const normalizedRoute = this.relocateRouteToPosition(route, targetStartLat, targetStartLon, targetStartElevation);
 
-        if (anchorConfig) {
-            normalizedRoute.metadata = {
-                ...normalizedRoute.metadata,
-                normalization: {
-                    ...(normalizedRoute.metadata?.normalization || {}),
-                    anchor: anchorConfig,
-                }
-            };
-            console.log('✅ Route normalized with anchor applied');
-        } else {
-            console.log(`✅ Route normalized and centered on (0,0)`);
-        }
+        console.log(`✅ Route normalized and centered on (0,0)`);
         
         return normalizedRoute;
-    }
-
-    _selectAnchorPoint(route, anchorConfig) {
-        if (!route.points?.length) {
-            return null;
-        }
-
-        const { targetLatOffset = 0, targetLonOffset = 0, type = 'center' } = anchorConfig ?? {};
-
-        // Get route bounds using utility function
-        const bounds = this.getRouteBounds(route);
-        
-        // Default to the center of the route
-        // Calculate true geometric center (midpoint of bounding box)
-        const currentCenterLat = (bounds.minLat + bounds.maxLat) / 2;
-        const currentCenterLon = (bounds.minLon + bounds.maxLon) / 2;
-        const currentMinElevation = bounds.minElevation;
-
-        const startPoint = route.points.at(0);
-
-        switch (type) {
-            case 'start': {
-                // We want the start to be anchored at the center of the circle
-                // So our relativeStartLat/Lon are 0 and relativeStartElevation is to adjust to the min
-                const relativeStartElevation = (startPoint.elevation || 0) - currentMinElevation;
-                console.log(`📌 Using 'start' anchor at (${startPoint.lat.toFixed(6)}, ${startPoint.lon.toFixed(6)})`);
-                return { relativeStartLat: targetLatOffset, relativeStartLon: targetLonOffset, relativeStartElevation };
-            }
-            case 'end': {
-                // We want the end to be anchored at the center of the circle
-                // So our relativeStartLat/Lon need to be shifted based on the difference between start and end
-                const endPoint = route.points.at(-1);
-                const relativeStartLat = (startPoint.lat - endPoint.lat) + targetLatOffset;
-                const relativeStartLon = (startPoint.lon - endPoint.lon) + targetLonOffset;
-                const relativeStartElevation = (endPoint.elevation || 0) - currentMinElevation;
-                console.log(`📌 Using 'end' anchor at (${endPoint.lat.toFixed(6)}, ${endPoint.lon.toFixed(6)}). Shifted by (${relativeStartLat.toFixed(6)}, ${relativeStartLon.toFixed(6)}, ${relativeStartElevation.toFixed(6)})`);
-                return { relativeStartLat, relativeStartLon, relativeStartElevation };
-            }
-            case 'center': {
-                // Default to the center of the route
-                const relativeStartLat = (startPoint.lat - currentCenterLat) + targetLatOffset;
-                const relativeStartLon = (startPoint.lon - currentCenterLon) + targetLonOffset;
-                const relativeStartElevation = (startPoint.elevation || 0) - currentMinElevation;
-                console.log(`📌 Using 'center' anchor at (${currentCenterLat.toFixed(6)}, ${currentCenterLon.toFixed(6)}). Shifted by (${relativeStartLat.toFixed(6)}, ${relativeStartLon.toFixed(6)}, ${relativeStartElevation.toFixed(6)})`);
-                return { relativeStartLat, relativeStartLon, relativeStartElevation };
-            }
-            default:
-                console.warn(`⚠️ Unknown anchor type: ${type}`);
-                // Default to the center of the route
-                const relativeStartLat = (startPoint.lat - currentCenterLat) + targetLatOffset;
-                const relativeStartLon = (startPoint.lon - currentCenterLon) + targetLonOffset;
-                const relativeStartElevation = (startPoint.elevation || 0) - currentMinElevation;
-                console.log(`📌 Using default 'center' anchor at (${currentCenterLat.toFixed(6)}, ${currentCenterLon.toFixed(6)}). Shifted by (${relativeStartLat.toFixed(6)}, ${relativeStartLon.toFixed(6)}, ${relativeStartElevation.toFixed(6)})`);
-                return { relativeStartLat, relativeStartLon, relativeStartElevation };
-        }
     }
 
     // 3. Resize a route to fit within our circle coordinates (40km radius)
@@ -491,6 +425,7 @@ class RouteManipulator {
             
             // Update metadata
             overlayedRoute.metadata = {
+                ...predeterminedPath.metadata,
                 ...overlayedRoute.metadata,
                 predeterminedPath: true,
                 pathTemplate: predeterminedPathName,

@@ -40005,11 +40005,11 @@
   "metadata": {
     "name": "Semi Circle",
     "creator": "https://routecoin.me/",
-    "normalization": {
+    "visualization": {
       "anchor": {
         "type": "end",
-        "targetLat": 0,
-        "targetLon": 0
+        "targetLatOffset": -0.1,
+        "targetLonOffset": 0.075
       }
     }
   }

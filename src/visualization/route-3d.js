@@ -424,7 +424,7 @@ class Route3DVisualization {
 
         console.log('🎮 Adding route to 3D viewer:', routeData.filename, `${routeData.points.length} points`);
 
-        const points3D = this.convertRoutePointsTo3D(routeData.points, this.settings.elevationExaggeration);
+        const points3D = this.convertRoutePointsTo3D(routeData, this.settings.elevationExaggeration);
         
         if (points3D.length === 0) {
             console.warn(`❌ No valid 3D points generated for route: ${routeData.filename}`);
@@ -565,16 +565,16 @@ class Route3DVisualization {
     }
 
     // Convert GPS points to 3D coordinates
-    convertRoutePointsTo3D(points, elevationExaggeration = 3) {
-        if (!points || points.length === 0) {
+    convertRoutePointsTo3D(routeData, elevationExaggeration = 3) {
+        if (!routeData?.points?.length) {
             console.warn('⚠️ No points provided to convertRoutePointsTo3D');
             return [];
         }
 
-        console.log(`🔄 Converting ${points.length} GPS points to 3D coordinates...`);
+        console.log(`🔄 Converting ${routeData.points.length} GPS points to 3D coordinates...`);
         
         // Validate that points have required properties
-        const validPoints = points.filter(p =>
+        const validPoints = routeData.points.filter(p =>
             Number.isFinite(p?.lat) && Number.isFinite(p?.lon)
         );
 
@@ -583,57 +583,153 @@ class Route3DVisualization {
             return [];
         }
         
-        if (validPoints.length !== points.length) {
-            console.warn(`⚠️ Filtered ${points.length - validPoints.length} invalid points`);
+        if (validPoints.length !== routeData.points.length) {
+            console.warn(`⚠️ Filtered ${routeData.points.length - validPoints.length} invalid points`);
         }
 
-        // Find the center point for coordinate system
-        const centerLat = validPoints.reduce((sum, p) => sum + p.lat, 0) / validPoints.length;
-        const centerLon = validPoints.reduce((sum, p) => sum + p.lon, 0) / validPoints.length;
-        
-        // Find elevation range
-        const elevations = validPoints.map(p => p.elevation || 0);
-        const minElevation = Math.min(...elevations);
-        const maxElevation = Math.max(...elevations);
-        
-        console.log(`📏 GPS center: ${centerLat.toFixed(6)}, ${centerLon.toFixed(6)}`);
-        console.log(`📏 Elevation range: ${minElevation}m to ${maxElevation}m`);
+        // Find the anchor point for coordinate system
+        const { anchorLat, anchorLon, anchorElevation } = this._selectAnchorPoint(routeData);
+        console.log(`📏 GPS anchor: ${anchorLat.toFixed(6)}, ${anchorLon.toFixed(6)}, ${anchorElevation}m`);
 
         const METERS_PER_DEG_LAT = 110540;
         const METERS_PER_DEG_LON = 111320;
         const MIN_HEIGHT = 50;
 
         // Convert to local coordinate system (meters from center)
-        const points3D = validPoints.map((point, index) => {
+        const points3D = validPoints.map((point) => {
             // Convert lat/lon to approximate meters (rough conversion)
-            const x = (point.lon - centerLon) * METERS_PER_DEG_LON * Math.cos(centerLat * Math.PI / 180);
-            const z = (centerLat - point.lat) * METERS_PER_DEG_LAT; // Flip Z for typical coordinate system
-            
+            const x = (point.lon - anchorLon) * METERS_PER_DEG_LON * Math.cos(anchorLat * Math.PI / 180);
+            const z = (anchorLat - point.lat) * METERS_PER_DEG_LAT; // Flip Z for typical coordinate system
+
             // Ensure elevation is always above ground with minimum offset
-            const rawElevation = point.elevation || 0;
-            const normalizedElevation = (rawElevation - minElevation) * elevationExaggeration;
-            const y = Math.max(normalizedElevation + MIN_HEIGHT, MIN_HEIGHT); // Minimum 50 units above ground
+            // Minimum 50 units above ground
+            const y = Math.max(((point.elevation ?? 0) - anchorElevation), 0) * elevationExaggeration + MIN_HEIGHT; 
 
             return new THREE.Vector3(x, y, z);
         }).filter(point => !isNaN(point.x) && !isNaN(point.y) && !isNaN(point.z));
-        
-        // Center the route around origin (0,0,0) for consistent positioning
-        if (points3D.length > 0) {
-            const routeCenterX = points3D.reduce((sum, p) => sum + p.x, 0) / points3D.length;
-            const routeCenterZ = points3D.reduce((sum, p) => sum + p.z, 0) / points3D.length;
-            
-            // Offset all points to center the route at origin
-            points3D.forEach(point => {
-                point.x -= routeCenterX;
-                point.z -= routeCenterZ;
-            });
-            
-            console.log(`🎯 Route centered: offset by (${-routeCenterX.toFixed(0)}, ${-routeCenterZ.toFixed(0)})`);
-        }
-        
+
         console.log(`🎯 Route converted: ${validPoints.length} → ${points3D.length} points, Y range: ${Math.min(...points3D.map(p => p.y)).toFixed(0)} to ${Math.max(...points3D.map(p => p.y)).toFixed(0)}`);
         
         return points3D;
+    }
+
+    // Utility: Get points bounds (min/max lat/lon/elevation or x/z/y)
+    _getRouteBounds(points) {
+        if (!points?.length) {
+            return null;
+        }
+
+        const lats = points.map(p => p.lat ?? p.x);
+        const lons = points.map(p => p.lon ?? p.z);
+        const elevations = points.map(p => p.elevation ?? p.y ?? 0);
+
+        const minLat =  Math.min(...lats);
+        const maxLat =  Math.max(...lats);
+        const minLon =  Math.min(...lons);
+        const maxLon =  Math.max(...lons);
+        const minElevation =  Math.min(...elevations);
+        const maxElevation =  Math.max(...elevations);
+        const latRange =  maxLat - minLat;
+        const lonRange =  maxLon - minLon;
+        const elevationRange =  maxElevation - minElevation;
+        const centerLat = (minLat + maxLat) / 2;
+        const centerLon = (minLon + maxLon) / 2;
+        const centerElevation = (minElevation + maxElevation) / 2;
+
+        return {
+            minLat,
+            maxLat,
+            minLon,
+            maxLon,
+            minElevation,
+            maxElevation,
+            latRange,
+            lonRange,
+            elevationRange,
+            centerLat,
+            centerLon,
+            centerElevation,
+        };
+    }
+
+    _selectAnchorPoint(route) {
+        if (!route.points?.length) {
+            return null;
+        }
+
+        const { targetLatOffset = 0, targetLonOffset = 0, type = 'center' } = route?.metadata?.visualization?.anchor ?? {};
+
+        // Get route bounds using utility function
+        const bounds = this._getRouteBounds(route.points);
+        
+        // Default to the center of the route
+        // Calculate true geometric center (midpoint of bounding box)
+        const currentCenterLat = (bounds.minLat + bounds.maxLat) / 2;
+        const currentCenterLon = (bounds.minLon + bounds.maxLon) / 2;
+        const currentMinElevation = bounds.minElevation;
+
+        const startPoint = route.points.at(0);
+        const relativeStartElevation = (startPoint.elevation ?? 0) - currentMinElevation;
+
+        switch (type) {
+            case 'start': {
+                // We want the start to be anchored at the center of the circle
+                // So our relativeStartLat/Lon are 0 and relativeStartElevation is to adjust to the min
+                console.log(`📌 Using 'start' anchor at (${startPoint.lat.toFixed(6)}, ${startPoint.lon.toFixed(6)})`);
+                return { 
+                    relativeStartLat: targetLatOffset,
+                    relativeStartLon: targetLonOffset,
+                    relativeStartElevation,
+                    anchorLat: startPoint.lat + targetLatOffset,
+                    anchorLon: startPoint.lon + targetLonOffset,
+                    anchorElevation: bounds.minElevation,
+                };
+            }
+            case 'end': {
+                // We want the end to be anchored at the center of the circle
+                // So our relativeStartLat/Lon need to be shifted based on the difference between start and end
+                const endPoint = route.points.at(-1);
+                const relativeStartLat = (startPoint.lat - endPoint.lat) + targetLatOffset;
+                const relativeStartLon = (startPoint.lon - endPoint.lon) + targetLonOffset;
+                console.log(`📌 Using 'end' anchor at (${endPoint.lat.toFixed(6)}, ${endPoint.lon.toFixed(6)}). Shifted by (${relativeStartLat.toFixed(6)}, ${relativeStartLon.toFixed(6)}, ${relativeStartElevation.toFixed(6)})`);
+                return {
+                    relativeStartLat,
+                    relativeStartLon,
+                    relativeStartElevation,
+                    anchorLat: endPoint.lat + targetLatOffset,
+                    anchorLon: endPoint.lon + targetLonOffset,
+                    anchorElevation: bounds.minElevation,
+                };
+            }
+            case 'center': {
+                // Default to the center of the route
+                const relativeStartLat = (startPoint.lat - currentCenterLat) + targetLatOffset;
+                const relativeStartLon = (startPoint.lon - currentCenterLon) + targetLonOffset;
+                console.log(`📌 Using 'center' anchor at (${currentCenterLat.toFixed(6)}, ${currentCenterLon.toFixed(6)}). Shifted by (${relativeStartLat.toFixed(6)}, ${relativeStartLon.toFixed(6)}, ${relativeStartElevation.toFixed(6)})`);
+                return {
+                    relativeStartLat,
+                    relativeStartLon,
+                    relativeStartElevation,
+                    anchorLat: currentCenterLat + targetLatOffset,
+                    anchorLon: currentCenterLon + targetLonOffset,
+                    anchorElevation: bounds.minElevation,
+                };
+            }
+            default:
+                console.warn(`⚠️ Unknown anchor type: ${type}`);
+                // Default to the center of the route
+                const relativeStartLat = (startPoint.lat - currentCenterLat) + targetLatOffset;
+                const relativeStartLon = (startPoint.lon - currentCenterLon) + targetLonOffset;
+                console.log(`📌 Using default 'center' anchor at (${currentCenterLat.toFixed(6)}, ${currentCenterLon.toFixed(6)}). Shifted by (${relativeStartLat.toFixed(6)}, ${relativeStartLon.toFixed(6)}, ${relativeStartElevation.toFixed(6)})`);
+                return {
+                    relativeStartLat,
+                    relativeStartLon,
+                    relativeStartElevation,
+                    anchorLat: currentCenterLat + targetLatOffset,
+                    anchorLon: currentCenterLon + targetLonOffset,
+                    anchorElevation: bounds.minElevation,
+                };
+        }
     }
 
     // Create route line geometry
