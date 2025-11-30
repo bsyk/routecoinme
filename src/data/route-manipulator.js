@@ -141,12 +141,7 @@ class RouteManipulator {
         // First route becomes the initial accumulator, iteration starts with second route
         return routes.reduce((aggregatedRoute, currentRoute) => {
             console.log(`🔗 Connecting route: ${currentRoute.filename || 'Unnamed'}`);
-            const combined = this._connectTwoRoutes(aggregatedRoute, currentRoute);
-            if (combined.points.length > 100000) {
-                console.warn(`⚠️ Combined route exceeds 100,000 points, downsampling`);
-                return this.resampleRoute(combined, 10000);
-            }
-            return combined;
+            return this._connectTwoRoutes(aggregatedRoute, currentRoute);
         });
     }
 
