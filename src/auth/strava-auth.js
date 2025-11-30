@@ -408,7 +408,7 @@ class StravaAuth {
             name: activity.name,
             type: activity.type,
             points: points,
-            distance: activity.distance,
+            distance: activity.distance / 1000, // Convert to km from meters
             elevationGain: activity.total_elevation_gain || 0,
             duration: activity.elapsed_time,
             startTime: new Date(activity.start_date),
