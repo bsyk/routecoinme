@@ -13,14 +13,15 @@
 //   - Server-side token exchange (client secret never exposed)
 //   - Stateless processing (no user data stored on server)
 
+// CORS headers for browser compatibility
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Strava-Token',
+};
+
 export default {
     async fetch(request, env, ctx) {
-        // CORS headers for browser compatibility
-        const corsHeaders = {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, X-Strava-Token, X-Request-Timestamp',
-        };
 
         // Handle CORS preflight requests
         if (request.method === 'OPTIONS') {
@@ -35,33 +36,35 @@ export default {
             console.log(`🔗 Processing request: ${request.method} ${url.pathname}`);
 
             // --- Authentication Endpoints ---
-            if (url.pathname === '/api/auth/login') {
-                return await handleAuthLogin(request, env, corsHeaders);
+            if (url.pathname.startsWith('/api/auth/')) {
+                if (url.pathname === '/api/auth/login') {
+                    return await handleAuthLogin(request, env);
+                }
+                if (url.pathname === '/api/auth/callback') {
+                    return await handleAuthCallback(request, env);
+                }
+                if (url.pathname === '/api/auth/status') {
+                    return await handleAuthStatus(request, env);
+                }
+                if (url.pathname === '/api/auth/logout') {
+                    return await handleAuthLogout(request, env);
+                }
             }
-            if (url.pathname === '/api/auth/callback') {
-                return await handleAuthCallback(request, env, corsHeaders);
-            }
-            if (url.pathname === '/api/auth/status') {
-                return await handleAuthStatus(request, env, corsHeaders);
-            }
-            if (url.pathname === '/api/auth/logout') {
-                return await handleAuthLogout(request, env, corsHeaders);
-            }
-
-            // Route API requests
+            
+            // Strava API requests
             if (url.pathname.startsWith('/api/strava/')) {
-                return await handleStravaAPI(request, url, corsHeaders, env);
-            }
+                const checkFailed = checkStravaToken(request);
+                if (checkFailed) {
+                    return checkFailed;
+                }
 
-            // Handle root path
-            if (url.pathname === '/') {
-                return new Response('RouteCoinMe Strava API Worker - Running', {
-                    status: 200,
-                    headers: {
-                        'Content-Type': 'text/plain',
-                        ...corsHeaders,
-                    },
-                });
+                if (url.pathname === '/api/strava/activities') {
+                    return await getActivities(authToken, url.searchParams);
+                }
+                if (url.pathname.startsWith('/api/strava/import-activity/')) {
+                    const importActivityId = url.pathname.split('/')[4];
+                    return await importActivityAsRoute(authToken, importActivityId);
+                }
             }
 
             // 404 for unknown paths
@@ -114,11 +117,11 @@ function isHttps(request) {
 }
 
 // --- Auth Handlers ---
-async function handleAuthLogin(request, env, corsHeaders) {
+async function handleAuthLogin(request, env) {
     console.log('🔐 Starting Strava OAuth login');
     const clientId = env.STRAVA_CLIENT_ID;
     if (!clientId) {
-        return jsonResponse({ error: 'Server misconfiguration', message: 'Missing STRAVA_CLIENT_ID' }, 500, corsHeaders);
+        return jsonResponse({ error: 'Server misconfiguration', message: 'Missing STRAVA_CLIENT_ID' }, 500);
     }
     const url = new URL(request.url);
     const origin = `${url.protocol}//${url.host}`;
@@ -128,22 +131,22 @@ async function handleAuthLogin(request, env, corsHeaders) {
     return new Response(null, { status: 302, headers: { Location: authUrl, ...corsHeaders } });
 }
 
-async function handleAuthCallback(request, env, corsHeaders) {
+async function handleAuthCallback(request, env) {
     console.log('🔐 Handling Strava OAuth callback');
     const clientId = env.STRAVA_CLIENT_ID;
     const clientSecret = env.STRAVA_CLIENT_SECRET;
     if (!clientId || !clientSecret) {
-        return jsonResponse({ error: 'Server misconfiguration', message: 'Missing Strava credentials' }, 500, corsHeaders);
+        return jsonResponse({ error: 'Server misconfiguration', message: 'Missing Strava credentials' }, 500);
     }
     const url = new URL(request.url);
     const code = url.searchParams.get('code');
     const error = url.searchParams.get('error');
     if (error) {
         console.warn('⚠️ OAuth denied by user');
-        return jsonResponse({ error: 'Access denied' }, 400, corsHeaders);
+        return jsonResponse({ error: 'Access denied' }, 400);
     }
     if (!code) {
-        return jsonResponse({ error: 'Missing code' }, 400, corsHeaders);
+        return jsonResponse({ error: 'Missing code' }, 400);
     }
     // Exchange code for token
     const tokenResp = await fetch('https://www.strava.com/oauth/token', {
@@ -159,13 +162,13 @@ async function handleAuthCallback(request, env, corsHeaders) {
     if (!tokenResp.ok) {
         const body = await tokenResp.text();
         console.error('❌ Token exchange failed', tokenResp.status, body);
-        return jsonResponse({ error: 'Token exchange failed', status: tokenResp.status }, 500, corsHeaders);
+        return jsonResponse({ error: 'Token exchange failed', status: tokenResp.status }, 500);
     }
     const tokenData = await tokenResp.json();
     const accessToken = tokenData.access_token;
-    const athlete = tokenData.athlete;
+    
     if (!accessToken) {
-        return jsonResponse({ error: 'No access token returned' }, 500, corsHeaders);
+        return jsonResponse({ error: 'No access token returned' }, 500);
     }
     const cookieSecure = isHttps(request);
     const accessCookie = buildSetCookie(COOKIE_NAME, encodeURIComponent(accessToken), { maxAge: 21600, secure: cookieSecure }); // 6h
@@ -181,10 +184,10 @@ async function handleAuthCallback(request, env, corsHeaders) {
     });
 }
 
-async function handleAuthStatus(request, env, corsHeaders) {
+async function handleAuthStatus(request, env) {
     const token = getAuthToken(request);
     if (!token) {
-        return jsonResponse({ authenticated: false }, 401, corsHeaders);
+        return jsonResponse({ authenticated: false }, 401);
     }
     try {
         // Verify token by fetching athlete
@@ -193,17 +196,17 @@ async function handleAuthStatus(request, env, corsHeaders) {
         });
         if (!resp.ok) {
             console.warn('⚠️ Token invalid');
-            return jsonResponse({ authenticated: false }, 401, corsHeaders);
+            return jsonResponse({ authenticated: false }, 401);
         }
         const athlete = await resp.json();
-        return jsonResponse({ authenticated: true, athlete }, 200, corsHeaders);
+        return jsonResponse({ authenticated: true, athlete }, 200);
     } catch (e) {
         console.error('❌ Auth status check failed', e);
-        return jsonResponse({ authenticated: false }, 401, corsHeaders);
+        return jsonResponse({ authenticated: false }, 401);
     }
 }
 
-async function handleAuthLogout(request, env, corsHeaders) {
+async function handleAuthLogout(request, env) {
     console.log('👋 Logging out');
     const cookieSecure = isHttps(request);
     const expiredAccess = buildSetCookie(COOKIE_NAME, '', { maxAge: 0, secure: cookieSecure });
@@ -217,16 +220,15 @@ async function handleAuthLogout(request, env, corsHeaders) {
     });
 }
 
-function jsonResponse(obj, status, corsHeaders) {
+function jsonResponse(obj, status) {
     return new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 }
 
 // Handle Strava API requests
-async function handleStravaAPI(request, url, corsHeaders, env) {
+function checkStravaToken(request) {
     // Extract and validate auth token (now supports cookie fallback)
     const authTokenRaw = getAuthToken(request);
     const authToken = authTokenRaw ? decodeURIComponent(authTokenRaw) : null;
-    const timestamp = request.headers.get('X-Request-Timestamp');
 
     if (!authToken) {
         return new Response(JSON.stringify({
@@ -241,113 +243,11 @@ async function handleStravaAPI(request, url, corsHeaders, env) {
         });
     }
 
-    // Validate timestamp (optional)
-    if (timestamp) {
-        const tokenAge = Date.now() - parseInt(timestamp);
-        const maxAge = 5 * 60 * 1000; // 5 minutes
-        if (tokenAge > maxAge) {
-            return new Response(JSON.stringify({
-                error: 'Token expired',
-                message: 'Authentication token is too old'
-            }), {
-                status: 401,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...corsHeaders,
-                },
-            });
-        }
-    }
-
-    // Route to specific Strava API handlers
-    const path = url.pathname.replace('/api/strava/', '');
-
-    switch (true) {
-        case path === 'athlete':
-            return await getAthlete(authToken, corsHeaders);
-        case path === 'activities':
-            return await getActivities(authToken, url.searchParams, corsHeaders);
-        case path.startsWith('activity/'):
-            const activityId = path.split('/')[1];
-            return await getActivity(authToken, activityId, corsHeaders);
-        case path.startsWith('import-activity/'):
-            const importActivityId = path.split('/')[1];
-            return await importActivityAsRoute(authToken, importActivityId, corsHeaders);
-        case path.startsWith('streams/'):
-            const streamActivityId = path.split('/')[1];
-            return await getActivityStreams(authToken, streamActivityId, url.searchParams, corsHeaders);
-        default:
-            return new Response(JSON.stringify({
-                error: 'Unknown endpoint',
-                message: `Endpoint ${path} not found`
-            }), {
-                status: 404,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...corsHeaders,
-                },
-            });
-    }
-}
-
-// Get athlete information
-async function getAthlete(authToken, corsHeaders) {
-    console.log('👤 Fetching athlete information');
-
-    try {
-        const response = await fetch('https://www.strava.com/api/v3/athlete', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${authToken}`,
-                'Accept': 'application/json',
-            },
-        });
-
-        if (!response.ok) {
-            const errorData = await response.text();
-            console.error('❌ Strava API error:', response.status, errorData);
-
-            return new Response(JSON.stringify({
-                error: 'Strava API error',
-                status: response.status,
-                message: 'Failed to fetch athlete data'
-            }), {
-                status: response.status,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...corsHeaders,
-                },
-            });
-        }
-
-        const athleteData = await response.json();
-        console.log('✅ Athlete data fetched successfully');
-
-        return new Response(JSON.stringify(athleteData), {
-            status: 200,
-            headers: {
-                'Content-Type': 'application/json',
-                ...corsHeaders,
-            },
-        });
-
-    } catch (error) {
-        console.error('❌ Error fetching athlete:', error);
-        return new Response(JSON.stringify({
-            error: 'Network error',
-            message: 'Failed to connect to Strava API'
-        }), {
-            status: 500,
-            headers: {
-                'Content-Type': 'application/json',
-                ...corsHeaders,
-            },
-        });
-    }
+    return null; // Token is valid, proceed
 }
 
 // Get activities list
-async function getActivities(authToken, searchParams, corsHeaders) {
+async function getActivities(authToken, searchParams) {
     console.log('📊 Fetching activities list');
 
     try {
@@ -420,130 +320,8 @@ async function getActivities(authToken, searchParams, corsHeaders) {
     }
 }
 
-// Get specific activity
-async function getActivity(authToken, activityId, corsHeaders) {
-    console.log(`📝 Fetching activity ${activityId}`);
-
-    try {
-        const response = await fetch(`https://www.strava.com/api/v3/activities/${activityId}`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${authToken}`,
-                'Accept': 'application/json',
-            },
-        });
-
-        if (!response.ok) {
-            const errorData = await response.text();
-            console.error('❌ Strava API error:', response.status, errorData);
-
-            return new Response(JSON.stringify({
-                error: 'Strava API error',
-                status: response.status,
-                message: `Failed to fetch activity ${activityId}`
-            }), {
-                status: response.status,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...corsHeaders,
-                },
-            });
-        }
-
-        const activityData = await response.json();
-        console.log(`✅ Activity ${activityId} fetched successfully`);
-
-        return new Response(JSON.stringify(activityData), {
-            status: 200,
-            headers: {
-                'Content-Type': 'application/json',
-                ...corsHeaders,
-            },
-        });
-
-    } catch (error) {
-        console.error('❌ Error fetching activity:', error);
-        return new Response(JSON.stringify({
-            error: 'Network error',
-            message: 'Failed to connect to Strava API'
-        }), {
-            status: 500,
-            headers: {
-                'Content-Type': 'application/json',
-                ...corsHeaders,
-            },
-        });
-    }
-}
-
-// Get activity streams (GPS data)
-async function getActivityStreams(authToken, activityId, searchParams, corsHeaders) {
-    console.log(`🗺️ Fetching streams for activity ${activityId}`);
-
-    try {
-        // Build Strava streams API URL
-        const stravaUrl = new URL(`https://www.strava.com/api/v3/activities/${activityId}/streams`);
-
-        // Set default stream types if not provided
-        const keys = searchParams.get('keys') || 'latlng,altitude,time';
-        const keyByType = searchParams.get('key_by_type') || 'true';
-
-        stravaUrl.searchParams.set('keys', keys);
-        stravaUrl.searchParams.set('key_by_type', keyByType);
-
-        const response = await fetch(stravaUrl.toString(), {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${authToken}`,
-                'Accept': 'application/json',
-            },
-        });
-
-        if (!response.ok) {
-            const errorData = await response.text();
-            console.error('❌ Strava API error:', response.status, errorData);
-
-            return new Response(JSON.stringify({
-                error: 'Strava API error',
-                status: response.status,
-                message: `Failed to fetch streams for activity ${activityId}`
-            }), {
-                status: response.status,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...corsHeaders,
-                },
-            });
-        }
-
-        const streamsData = await response.json();
-        console.log(`✅ Streams for activity ${activityId} fetched successfully`);
-
-        return new Response(JSON.stringify(streamsData), {
-            status: 200,
-            headers: {
-                'Content-Type': 'application/json',
-                ...corsHeaders,
-            },
-        });
-
-    } catch (error) {
-        console.error('❌ Error fetching streams:', error);
-        return new Response(JSON.stringify({
-            error: 'Network error',
-            message: 'Failed to connect to Strava API'
-        }), {
-            status: 500,
-            headers: {
-                'Content-Type': 'application/json',
-                ...corsHeaders,
-            },
-        });
-    }
-}
-
 // Import activity as route (fetch activity + streams, convert to route format)
-async function importActivityAsRoute(authToken, activityId, corsHeaders) {
+async function importActivityAsRoute(authToken, activityId) {
     console.log(`📥 Importing activity ${activityId} as route`);
 
     try {

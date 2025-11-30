@@ -150,10 +150,6 @@ class StravaAuth {
         return this.callStravaAPI(endpoint);
     }
 
-    async getAthlete() {
-        return this.callStravaAPI('/athlete');
-    }
-
     // Update UI for authenticated user
     updateUIForAuthenticatedState(athlete) {
         const authBtn = document.getElementById('auth-btn');
