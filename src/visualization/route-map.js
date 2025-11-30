@@ -1,9 +1,11 @@
 // Route Map Visualization using Leaflet.js
 import L from 'leaflet';
+import unitPreferences from '../utils/unit-preferences.js';
 
 class RouteMapVisualization {
     constructor(containerId = 'route-map') {
         this.containerId = containerId;
+        this.unitPreferences = unitPreferences;
         this.map = null;
         this.routeLayers = [];
         this.markerLayers = [];
@@ -214,13 +216,15 @@ class RouteMapVisualization {
         const duration = routeData.duration ? this.formatDuration(routeData.duration) : 'Unknown';
         const date = routeData.metadata?.time || routeData.uploadTime;
         const formattedDate = date ? new Date(date).toLocaleDateString() : 'Unknown';
+        const distanceDisplay = this.unitPreferences.formatDistance(routeData.distance);
+        const elevationDisplay = this.unitPreferences.formatElevation(routeData.elevationGain);
 
         return `
             <div class="route-popup-content">
                 <h4>${routeData.filename || 'Unnamed Route'}</h4>
                 <div class="route-stats-popup">
-                    <div><strong>📏 Distance:</strong> ${routeData.distance?.toFixed(1) || '0'} km</div>
-                    <div><strong>⛰️ Elevation Gain:</strong> ${Math.round(routeData.elevationGain || 0)} m</div>
+                    <div><strong>📏 Distance:</strong> ${distanceDisplay}</div>
+                    <div><strong>⛰️ Elevation Gain:</strong> ${elevationDisplay}</div>
                     <div><strong>⏱️ Duration:</strong> ${duration}</div>
                     <div><strong>📅 Date:</strong> ${formattedDate}</div>
                     <div><strong>📍 Points:</strong> ${routeData.pointCount || 0}</div>
@@ -228,6 +232,14 @@ class RouteMapVisualization {
                 ${routeData.metadata?.description ? `<p><em>${routeData.metadata.description}</em></p>` : ''}
             </div>
         `;
+    }
+
+    refreshRoutePopups() {
+        this.routeLayers.forEach(layer => {
+            if (layer.polyline && typeof layer.polyline.setPopupContent === 'function') {
+                layer.polyline.setPopupContent(this.createRoutePopup(layer.data));
+            }
+        });
     }
 
     // Format duration from seconds to human readable

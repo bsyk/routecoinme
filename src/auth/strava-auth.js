@@ -1,3 +1,5 @@
+import unitPreferences from '../utils/unit-preferences.js';
+
 // Strava OAuth Authentication Client
 // Works with Cloudflare Worker for server-side OAuth flow
 // All credentials (client ID & secret) are stored server-side in worker env vars
@@ -8,6 +10,9 @@ class StravaAuth {
         this.workerBaseUrl = window.location.origin; // Path-based API routing
         this.cachedAuthStatus = null;
         this.statusRefreshPromise = null;
+        this.recentActivitiesCache = null;
+        this.handleUnitPreferenceChange = this.handleUnitPreferenceChange.bind(this);
+        window.addEventListener('rcm:unit-change', this.handleUnitPreferenceChange);
         this.init();
     }
 
@@ -345,6 +350,7 @@ class StravaAuth {
         try {
             const activities = await this.getRecentActivities();
             console.log(`✅ Fetched ${activities.length} activities`);
+            this.recentActivitiesCache = activities;
             this.showActivitiesList(activities);
         } catch (error) {
             console.error('❌ Error fetching activities:', error);
@@ -358,6 +364,8 @@ class StravaAuth {
 
     // Show activities list in UI
     showActivitiesList(activities) {
+        this.recentActivitiesCache = activities;
+
         // Create or update the Strava activities modal
         let modal = document.getElementById('strava-activities-modal');
         if (!modal) {
@@ -375,12 +383,14 @@ class StravaAuth {
             const buttonIcon = isReimport ? '🔄' : '📥';
             const buttonText = isReimport ? 'Reimport' : 'Import';
             const buttonClass = isReimport ? 'btn-secondary' : 'btn-primary';
+            const distanceMeters = Number(activity.distance) || 0;
+            const distanceDisplay = unitPreferences.formatDistance(distanceMeters / 1000);
             
             return `
                 <div class="activity-item" style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px; background: white;">
                     <strong>${activity.name}</strong>
                     <br>
-                    <small>${activity.sport_type || activity.type} • ${(activity.distance / 1000).toFixed(1)}km • ${activity.start_date_local}</small>
+                    <small>${activity.sport_type || activity.type} • ${distanceDisplay} • ${activity.start_date_local}</small>
                     <br>
                     <button class="btn btn-sm ${buttonClass} import-activity-btn" onclick="window.stravaAuth.importActivity('${activity.id}')" style="margin-top: 5px; transition: all 0.3s ease;">
                         ${buttonIcon} ${buttonText}
@@ -448,6 +458,17 @@ class StravaAuth {
         const modal = document.getElementById('strava-activities-modal');
         if (modal) {
             modal.style.display = 'none';
+        }
+    }
+
+    isActivitiesModalOpen() {
+        const modal = document.getElementById('strava-activities-modal');
+        return modal && modal.style.display === 'flex';
+    }
+
+    handleUnitPreferenceChange() {
+        if (this.recentActivitiesCache && this.isActivitiesModalOpen()) {
+            this.showActivitiesList(this.recentActivitiesCache);
         }
     }
 

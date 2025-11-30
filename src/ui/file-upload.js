@@ -4,6 +4,7 @@ import RouteMapVisualization from '../visualization/route-map.js';
 import Route3DVisualization from '../visualization/route-3d.js';
 import RouteStorageManager from '../data/route-storage.js';
 import RouteManipulator from '../data/route-manipulator.js';
+import unitPreferences from '../utils/unit-preferences.js';
 
 class FileUploadHandler {
     constructor() {
@@ -11,6 +12,7 @@ class FileUploadHandler {
         this.mapViz = new RouteMapVisualization();
         this.viewer3D = new Route3DVisualization();
         this.routeManipulator = new RouteManipulator();
+        this.unitPreferences = unitPreferences;
         this.storageManager = null; // Will be initialized in initializeStorage()
         this.uploadedRoutes = [];
         this.maxFiles = 10; // Reduced from 20 to help with storage limits
@@ -37,6 +39,7 @@ class FileUploadHandler {
         
         // Set up centralized state listener
         this.setupStateListener();
+        this.setupUnitPreferenceHandlers();
         
         // Initialize the map visualization
         this.initializeMapVisualization();
@@ -174,6 +177,34 @@ class FileUploadHandler {
                     this.updateStatsDisplay();
             }
         });
+    }
+
+    setupUnitPreferenceHandlers() {
+        window.addEventListener('rcm:unit-change', () => {
+            this.applyUnitPreferences();
+        });
+
+        // Apply current preference immediately so UI reflects stored choice on load
+        this.applyUnitPreferences();
+    }
+
+    applyUnitPreferences() {
+        this.updateStatsDisplay();
+        if (this.uploadedRoutes.length > 0 || this.aggregatedRoute) {
+            this.updateRouteList();
+        }
+
+        if (this.mapViz && typeof this.mapViz.refreshRoutePopups === 'function') {
+            this.mapViz.refreshRoutePopups();
+        }
+    }
+
+    formatDistance(distanceKm, options = {}) {
+        return this.unitPreferences.formatDistance(distanceKm, options);
+    }
+
+    formatElevation(elevationMeters, options = {}) {
+        return this.unitPreferences.formatElevation(elevationMeters, options);
     }
 
     // Specific change handlers
@@ -648,8 +679,10 @@ class FileUploadHandler {
 
         const routeList = this.uploadedRoutes.map((route, index) => {
             const duration = route.duration ? `${Math.round(route.duration / 60)} min` : 'Unknown';
-            return `${index + 1}. ${route.filename}
-   📏 ${route.distance.toFixed(1)}km  ⛰️ ${Math.round(route.elevationGain)}m  ⏱️ ${duration}`;
+              const distanceDisplay = this.formatDistance(route.distance);
+              const elevationDisplay = this.formatElevation(route.elevationGain);
+              return `${index + 1}. ${route.filename}
+       📏 ${distanceDisplay}  ⛰️ ${elevationDisplay}  ⏱️ ${duration}`;
         }).join('\n\n');
 
         // Show route info in console (too much for a notification)
@@ -835,7 +868,9 @@ class FileUploadHandler {
             }
             const elevationDescription = elevationMode === 'actual' ? 'actual elevation' : 'cumulative climbing';
             
-            const successMessage = `🔗 Aggregated ${this._routesToAggregate.length} routes: ${this.aggregatedRoute.distance.toFixed(1)}km, ${Math.round(this.aggregatedRoute.elevationGain)}m elevation`;
+            const distanceDisplay = this.formatDistance(this.aggregatedRoute.distance);
+            const elevationDisplay = this.formatElevation(this.aggregatedRoute.elevationGain);
+            const successMessage = `🔗 Aggregated ${this._routesToAggregate.length} routes: ${distanceDisplay}, ${elevationDisplay} elevation`;
             console.log(`Route Aggregation Complete! Combined ${this._routesToAggregate.length} routes using ${modeDescription} aggregation with ${elevationDescription}.`);
             this.showNotification(successMessage, 'success');
 
@@ -902,7 +937,9 @@ class FileUploadHandler {
             duration: 0
         });
 
-        console.log(`📊 Original combined stats before aggregation: ${originalStats.distance.toFixed(1)}km, ${originalStats.elevationGain.toFixed(1)}m gain`);  
+        const originalDistanceDisplay = this.formatDistance(originalStats.distance);
+        const originalElevationDisplay = this.formatElevation(originalStats.elevationGain, { precision: 1 });
+        console.log(`📊 Original combined stats before aggregation: ${originalDistanceDisplay}, ${originalElevationDisplay} gain`);
 
         // Use RouteManipulator to aggregate routes
         let aggregatedRoute = this.routeManipulator.aggregateAndResampleRoutes(routes);
@@ -942,8 +979,8 @@ class FileUploadHandler {
         console.log(`✅ Distance-based aggregated route created using RouteManipulator:`, {
             filename: aggregatedRoute.filename,
             totalPoints: aggregatedRoute.points.length,
-            totalDistance: aggregatedRoute.distance.toFixed(1),
-            totalElevationGain: Math.round(aggregatedRoute.elevationGain),
+            totalDistance: this.formatDistance(aggregatedRoute.distance),
+            totalElevationGain: this.formatElevation(aggregatedRoute.elevationGain),
             sourceRoutes: aggregatedRoute.metadata.sourceRoutes.length
         });
 
@@ -971,7 +1008,9 @@ class FileUploadHandler {
             duration: 0
         });
 
-        console.log(`📊 Original combined stats before aggregation: ${originalStats.distance.toFixed(1)}km, ${originalStats.elevationGain.toFixed(1)}m gain`);  
+        const timeAggregationDistanceDisplay = this.formatDistance(originalStats.distance);
+        const timeAggregationElevationDisplay = this.formatElevation(originalStats.elevationGain, { precision: 1 });
+    console.log(`📊 Original combined stats before aggregation: ${timeAggregationDistanceDisplay}, ${timeAggregationElevationDisplay} gain`);
 
 
         // Step 1: Spatially aggregate routes using RouteManipulator
@@ -1045,8 +1084,8 @@ class FileUploadHandler {
             filename: aggregatedRoute.filename,
             totalPoints: aggregatedRoute.points.length,
             timeStep: stepLabel,
-            totalDistance: aggregatedRoute.distance.toFixed(1),
-            totalElevationGain: Math.round(aggregatedRoute.elevationGain),
+            totalDistance: this.formatDistance(aggregatedRoute.distance),
+            totalElevationGain: this.formatElevation(aggregatedRoute.elevationGain),
             sourceRoutes: aggregatedRoute.metadata.sourceRoutes.length
         });
 
@@ -1073,7 +1112,9 @@ class FileUploadHandler {
             duration: 0
         });
 
-        console.log(`📊 Original combined stats before aggregation: ${originalStats.distance.toFixed(1)}km, ${originalStats.elevationGain.toFixed(1)}m gain`);  
+        const fictionalDistanceDisplay = this.formatDistance(originalStats.distance);
+        const fictionalElevationDisplay = this.formatElevation(originalStats.elevationGain, { precision: 1 });
+        console.log(`📊 Original combined stats before aggregation: ${fictionalDistanceDisplay}, ${fictionalElevationDisplay} gain`);
 
 
         // Step 1: Aggregate routes using RouteManipulator (distance-based)
@@ -1120,8 +1161,8 @@ class FileUploadHandler {
             filename: fictionalRoute.filename,
             totalPoints: fictionalRoute.points.length,
             pathPattern: pathPattern,
-            totalDistance: fictionalRoute.distance.toFixed(1),
-            totalElevationGain: Math.round(fictionalRoute.elevationGain),
+            totalDistance: this.formatDistance(fictionalRoute.distance),
+            totalElevationGain: this.formatElevation(fictionalRoute.elevationGain),
             sourceRoutes: fictionalRoute.metadata.sourceRoutes.length
         });
 
@@ -1438,6 +1479,8 @@ class FileUploadHandler {
         if (this.aggregatedRoute) {
             const color = '#ff6b35'; // Orange color for aggregated route
             const duration = this.aggregatedRoute.duration ? this.formatDuration(this.aggregatedRoute.duration) : 'Unknown';
+            const distanceDisplay = this.formatDistance(this.aggregatedRoute.distance);
+            const elevationDisplay = this.formatElevation(this.aggregatedRoute.elevationGain);
             
             routeItems += `
                 <div class="route-list-item aggregated-route" data-route-id="${this.aggregatedRoute.id}">
@@ -1449,8 +1492,8 @@ class FileUploadHandler {
                     <div class="route-item-info">
                         <h4 title="${this.aggregatedRoute.filename}">🔗 ${this.truncateFilename(this.aggregatedRoute.filename)}</h4>
                         <div class="route-item-stats">
-                            <span>📏 ${this.aggregatedRoute.distance.toFixed(1)}km</span>
-                            <span>⛰️ ${Math.round(this.aggregatedRoute.elevationGain)}m</span>
+                            <span>📏 ${distanceDisplay}</span>
+                            <span>⛰️ ${elevationDisplay}</span>
                             <span>⏱️ ${duration}</span>
                         </div>
                     </div>
@@ -1474,6 +1517,8 @@ class FileUploadHandler {
         routeItems += this.uploadedRoutes.map((route, index) => {
             const color = this.mapViz.routeLayers.find(layer => layer.id === route.id)?.color || '#2563eb';
             const duration = route.duration ? this.formatDuration(route.duration) : 'Unknown';
+            const distanceDisplay = this.formatDistance(route.distance);
+            const elevationDisplay = this.formatElevation(route.elevationGain);
             // Individual route is selected if it's in selectedRoutes AND we're not showing aggregated
             const isSelected = !this.isShowingAggregated && this.selectedRoutes.has(route.id);
             
@@ -1487,8 +1532,8 @@ class FileUploadHandler {
                     <div class="route-item-info">
                         <h4 title="${route.filename}">${this.truncateFilename(route.filename)}</h4>
                         <div class="route-item-stats">
-                            <span>📏 ${route.distance.toFixed(1)}km</span>
-                            <span>⛰️ ${Math.round(route.elevationGain)}m</span>
+                            <span>📏 ${distanceDisplay}</span>
+                            <span>⛰️ ${elevationDisplay}</span>
                             <span>⏱️ ${duration}</span>
                         </div>
                     </div>
@@ -1831,18 +1876,21 @@ class FileUploadHandler {
         if (routesCountEl) {
             routesCountEl.textContent = totalRoutes;
         }
+        const totalDistanceDisplay = this.formatDistance(totalDistance);
+        const totalElevationDisplay = this.formatElevation(totalElevation);
+
         if (totalDistanceEl) {
-            totalDistanceEl.textContent = `${totalDistance.toFixed(1)}km`;
+            totalDistanceEl.textContent = totalDistanceDisplay;
         }
         if (totalElevationEl) {
-            totalElevationEl.textContent = `${Math.round(totalElevation)}m`;
+            totalElevationEl.textContent = totalElevationDisplay;
         }
         
         if (!routesCountEl || !totalDistanceEl || !totalElevationEl) {
             console.warn('⚠️ Some stats elements not found, stats update postponed');
         } else {
             const statsType = this.isShowingAggregated ? 'aggregated' : 'selected individual';
-            console.log(`📊 Stats updated (${statsType}): ${totalRoutes} routes, ${totalDistance.toFixed(1)}km, ${Math.round(totalElevation)}m`);
+            console.log(`📊 Stats updated (${statsType}): ${totalRoutes} routes, ${totalDistanceDisplay}, ${totalElevationDisplay}`);
         }
     }
 

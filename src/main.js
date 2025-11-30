@@ -1,6 +1,7 @@
 // RouteCoinMe - Main Application Entry Point
 import StravaAuth from './auth/strava-auth.js';
 import FileUploadHandler from './ui/file-upload.js';
+import unitPreferences from './utils/unit-preferences.js';
 
 console.log('🏔️ RouteCoinMe - Loading...');
 
@@ -9,12 +10,14 @@ class RouteCoinMe {
     constructor() {
         this.stravaAuth = null;
         this.fileUploader = null;
+        this.unitPreferences = unitPreferences;
         this.init();
     }
 
     init() {
         console.log('🚀 Initializing RouteCoinMe application...');
         this.initializeAuth();
+        this.initializeUnitToggle();
         this.initializeFileUpload();
         this.setupEventListeners();
         this.displayWelcomeMessage();
@@ -28,6 +31,38 @@ class RouteCoinMe {
         window.stravaAuth = this.stravaAuth;
         
         console.log('🔐 Strava authentication initialized');
+    }
+
+    initializeUnitToggle() {
+        window.unitPreferences = this.unitPreferences;
+
+        const button = document.getElementById('unit-toggle-btn');
+        if (!button) {
+            console.warn('⚠️ Unit toggle button not found');
+            return;
+        }
+
+        const applyLabel = (system) => {
+            if (system === 'metric') {
+                button.textContent = 'Use miles + feet';
+                button.title = 'Switch to imperial units (miles and feet)';
+            } else {
+                button.textContent = 'Use km + meters';
+                button.title = 'Switch to metric units (kilometers and meters)';
+            }
+        };
+
+        applyLabel(this.unitPreferences.getUnitSystem());
+
+        button.addEventListener('click', () => {
+            const newSystem = this.unitPreferences.toggleUnitSystem();
+            applyLabel(newSystem);
+        });
+
+        window.addEventListener('rcm:unit-change', (event) => {
+            const system = event.detail?.system || this.unitPreferences.getUnitSystem();
+            applyLabel(system);
+        });
     }
 
     initializeFileUpload() {
