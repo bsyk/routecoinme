@@ -128,7 +128,28 @@ class StravaAuth {
                     this.clearLocalAuthState();
                     throw new Error('Authentication required');
                 }
-                throw new Error(`API call failed: ${response.status}`);
+                
+                // Try to extract error message from response body
+                let errorMessage = `API call failed: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    if (errorData.message) {
+                        errorMessage = errorData.message;
+                    } else if (errorData.error) {
+                        errorMessage = errorData.error;
+                    } 
+                } catch (parseError) {
+                    // If JSON parsing fails, try to get text
+                    try {
+                        const errorText = await response.text();
+                        if (errorText) {
+                            errorMessage = errorText;
+                        }
+                    } catch (textError) {
+                        // Keep the default error message
+                    }
+                }
+                throw new Error(errorMessage);
             }
 
             return await response.json();
@@ -414,7 +435,24 @@ class StravaAuth {
             
         } catch (error) {
             console.error('❌ Error importing activity:', error);
-            this.showNotification(`Failed to import activity: ${error.message}`, 'error');
+            
+            // Extract a user-friendly error message
+            let userMessage = 'Failed to import activity';
+            if (error.message) {
+                // Use the error message from the API if available
+                userMessage = error.message;
+                
+                // Clean up common error patterns for better UX
+                if (userMessage.includes('API call failed:')) {
+                    // Keep API error messages as-is since they might contain useful info
+                } else if (userMessage === 'Authentication required') {
+                    userMessage = 'Please re-authenticate with Strava';
+                } else if (userMessage.includes('Network')) {
+                    userMessage = 'Network error - please check your connection';
+                }
+            }
+            
+            this.showNotification(`❌ ${userMessage}`, 'error');
             
             // Re-enable all buttons on error
             this.reEnableImportButtons(allImportButtons, importBtn, originalButtonHTML);

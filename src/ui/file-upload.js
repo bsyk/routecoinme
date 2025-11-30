@@ -1175,6 +1175,8 @@ class FileUploadHandler {
         console.log('🗑️ Clearing all routes...');
         this.uploadedRoutes = [];
         this.aggregatedRoute = null;
+        this.selectedRoutes.clear();
+        this.isShowingAggregated = false;
         
         // Clear from storage
         try {
@@ -1190,13 +1192,15 @@ class FileUploadHandler {
         }
 
         // Clear map visualization
-        if (this.mapVisualization) {
-            this.mapVisualization.clearMap();
+        if (this.mapViz?.map) {
+            this.mapViz.clearAllRoutes();
+            console.log('🗺️ Map visualization cleared');
         }
 
         // Clear 3D visualization
-        if (this.viewer3D && this.viewer3D.isInitialized) {
+        if (this.viewer3D?.isInitialized) {
             this.viewer3D.clearAllRoutes();
+            console.log('🎮 3D visualization cleared');
         }
         
         // Return to initial state
