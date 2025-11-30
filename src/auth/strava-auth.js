@@ -260,7 +260,7 @@ class StravaAuth {
             <div class="activity-item" style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px; background: white;">
                 <strong>${activity.name}</strong>
                 <br>
-                <small>${activity.type} • ${(activity.distance / 1000).toFixed(1)}km • ${activity.start_date_local}</small>
+                <small>${activity.sport_type || activity.type} • ${(activity.distance / 1000).toFixed(1)}km • ${activity.start_date_local}</small>
                 <br>
                 <button class="btn btn-sm btn-primary import-activity-btn" onclick="window.stravaAuth.importActivity('${activity.id}')" style="margin-top: 5px; transition: all 0.3s ease;">
                     📥 Import
@@ -272,6 +272,11 @@ class StravaAuth {
         if (modalContent) {
             modalContent.innerHTML = `
                 <h3>📊 Recent Strava Activities</h3>
+                <div style="margin: 10px 0;">
+                    <button class="btn btn-primary" onclick="window.stravaAuth.showBulkImportDialog()" style="width: 100%;">
+                        📦 Bulk Import Activities
+                    </button>
+                </div>
                 <div class="activities-list" style="max-height: 400px; overflow-y: auto; margin: 15px 0;">
                     ${activitiesHTML}
                 </div>
@@ -476,6 +481,313 @@ class StravaAuth {
                 setTimeout(() => notification.remove(), 300);
             }
         }, duration);
+    }
+    
+    // Show bulk import dialog
+    showBulkImportDialog() {
+        // Create or update the bulk import modal
+        let modal = document.getElementById('bulk-import-modal');
+        if (!modal) {
+            modal = this.createBulkImportModal();
+        }
+        
+        // Show the modal
+        modal.style.display = 'flex';
+    }
+    
+    // Create the bulk import modal
+    createBulkImportModal() {
+        const modal = document.createElement('div');
+        modal.id = 'bulk-import-modal';
+        modal.className = 'privacy-modal-overlay';
+        modal.style.display = 'none';
+        
+        // Default to last 30 days
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - 30);
+        
+        const endDateStr = endDate.toISOString().split('T')[0];
+        const startDateStr = startDate.toISOString().split('T')[0];
+        
+        modal.innerHTML = `
+            <div class="privacy-modal" style="max-width: 600px;">
+                <div class="privacy-modal-header">
+                    <h2>📦 Bulk Import Activities</h2>
+                    <button class="modal-close" onclick="window.stravaAuth.closeBulkImportModal()">×</button>
+                </div>
+                <div class="privacy-modal-content">
+                    <p>Import multiple activities between two dates</p>
+                    
+                    <div style="margin: 20px 0;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Start Date:</label>
+                        <input type="date" id="bulk-start-date" value="${startDateStr}" 
+                               style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    
+                    <div style="margin: 20px 0;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">End Date:</label>
+                        <input type="date" id="bulk-end-date" value="${endDateStr}"
+                               style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    
+                    <div style="margin: 20px 0;">
+                        <label style="display: block; margin-bottom: 10px; font-weight: bold;">Activity Types:</label>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="Ride" checked class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>🚴 Ride</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="VirtualRide" checked class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>🚴‍♂️ Virtual Ride</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="EBikeRide" checked class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>⚡ E-Bike Ride</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="GravelRide" checked class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>🚵 Gravel Ride</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="MountainBikeRide" checked class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>🏔️ MTB Ride</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="EMountainBikeRide" checked class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>⚡🏔️ E-MTB Ride</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="Run" class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>🏃 Run</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="TrailRun" class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>🏃‍♂️ Trail Run</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="VirtualRun" class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>🏃‍♀️ Virtual Run</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="Hike" class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>🥾 Hike</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="Walk" class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>🚶 Walk</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="BackcountrySki" class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>⛷️ Backcountry Ski</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="NordicSki" class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>⛷️ Nordic Ski</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="Snowshoe" class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>🥾 Snowshoe</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="Handcycle" class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>🚴 Handcycle</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="Wheelchair" class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>♿ Wheelchair</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" value="Velomobile" class="activity-type-checkbox" style="margin-right: 5px;">
+                                <span>🚴 Velomobile</span>
+                            </label>
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <button class="btn btn-sm btn-secondary" onclick="window.stravaAuth.toggleAllActivityTypes(true)">
+                                Select All
+                            </button>
+                            <button class="btn btn-sm btn-secondary" onclick="window.stravaAuth.toggleAllActivityTypes(false)" style="margin-left: 5px;">
+                                Deselect All
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="bulk-import-progress" style="display: none; margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 5px;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">Import Progress</div>
+                        <div id="bulk-import-status">Preparing...</div>
+                        <div style="width: 100%; height: 20px; background: #ddd; border-radius: 10px; margin-top: 10px; overflow: hidden;">
+                            <div id="bulk-import-progress-bar" style="width: 0%; height: 100%; background: #4CAF50; transition: width 0.3s;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="privacy-modal-actions">
+                    <button class="btn btn-secondary" onclick="window.stravaAuth.closeBulkImportModal()">
+                        Cancel
+                    </button>
+                    <button class="btn btn-primary" id="start-bulk-import-btn" onclick="window.stravaAuth.startBulkImport()">
+                        📦 Start Import
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        // Close when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeBulkImportModal();
+            }
+        });
+        
+        document.body.appendChild(modal);
+        return modal;
+    }
+    
+    // Close the bulk import modal
+    closeBulkImportModal() {
+        const modal = document.getElementById('bulk-import-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+    
+    // Toggle all activity types
+    toggleAllActivityTypes(checked) {
+        const checkboxes = document.querySelectorAll('.activity-type-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = checked;
+        });
+    }
+    
+    // Start bulk import
+    async startBulkImport() {
+        const startDateInput = document.getElementById('bulk-start-date');
+        const endDateInput = document.getElementById('bulk-end-date');
+        const progressDiv = document.getElementById('bulk-import-progress');
+        const statusDiv = document.getElementById('bulk-import-status');
+        const progressBar = document.getElementById('bulk-import-progress-bar');
+        const startBtn = document.getElementById('start-bulk-import-btn');
+        
+        if (!startDateInput || !endDateInput) {
+            this.showNotification('Invalid date inputs', 'error');
+            return;
+        }
+        
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
+        
+        if (!startDate || !endDate) {
+            this.showNotification('Please select both start and end dates', 'error');
+            return;
+        }
+        
+        // Get selected activity types
+        const selectedTypes = Array.from(document.querySelectorAll('.activity-type-checkbox:checked'))
+            .map(checkbox => checkbox.value);
+        
+        if (selectedTypes.length === 0) {
+            this.showNotification('Please select at least one activity type', 'error');
+            return;
+        }
+        
+        try {
+            // Show progress UI
+            progressDiv.style.display = 'block';
+            startBtn.disabled = true;
+            startBtn.style.opacity = '0.5';
+            statusDiv.textContent = 'Fetching activities from Strava...';
+            progressBar.style.width = '10%';
+            
+            console.log(`📦 Starting bulk import from ${startDate} to ${endDate}`);
+            console.log(`🎯 Activity types: ${selectedTypes.join(', ')}`);
+            
+            // Call the worker bulk import endpoint
+            const response = await fetch(`${this.workerBaseUrl}/api/strava/bulk-import`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    startDate,
+                    endDate,
+                    activityTypes: selectedTypes
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Bulk import failed: ${response.status}`);
+            }
+            
+            progressBar.style.width = '50%';
+            statusDiv.textContent = 'Processing activities...';
+            
+            const result = await response.json();
+            
+            progressBar.style.width = '75%';
+            statusDiv.textContent = 'Adding routes to your collection...';
+            
+            console.log(`✅ Bulk import complete: ${result.routes.length} routes imported`);
+            
+            // Add all routes to the file uploader
+            if (window.fileUploader && result.routes.length > 0) {
+                // Add routes without triggering individual UI updates
+                for (const route of result.routes) {
+                    // Parse startTime back to Date object if needed
+                    if (route.startTime) {
+                        route.startTime = new Date(route.startTime);
+                    }
+                    
+                    // Add route directly to array without notification
+                    route.id = window.fileUploader.generateRouteId();
+                    window.fileUploader.uploadedRoutes.push(route);
+                    
+                    // Auto-select new routes for display (unless showing aggregated route)
+                    if (!window.fileUploader.isShowingAggregated) {
+                        window.fileUploader.selectedRoutes.add(route.id);
+                    }
+                }
+                
+                console.log(`✅ Added ${result.routes.length} routes to collection`);
+                
+                // Save all routes to storage
+                await window.fileUploader.saveRoutesToStorage();
+                
+                // Trigger single UI update for all routes
+                window.fileUploader.notifyStateChange('selected-routes-changed', { 
+                    reason: 'bulk-import-complete',
+                    count: result.routes.length
+                });
+                
+                progressBar.style.width = '100%';
+                statusDiv.textContent = `Complete! Imported ${result.routes.length} activities.`;
+                
+                // Show summary
+                let summaryMessage = `✅ Successfully imported ${result.routes.length} activities`;
+                if (result.errors.length > 0) {
+                    summaryMessage += `\n⚠️ ${result.errors.length} activities failed to import`;
+                }
+                this.showNotification(summaryMessage, 'success', 5000);
+                
+                // Close modal after a delay
+                setTimeout(() => {
+                    this.closeBulkImportModal();
+                    this.closeActivitiesModal();
+                }, 2000);
+            } else {
+                statusDiv.textContent = 'No activities found in date range.';
+                this.showNotification('No activities found matching your criteria', 'info');
+            }
+            
+        } catch (error) {
+            console.error('❌ Bulk import error:', error);
+            statusDiv.textContent = `Error: ${error.message}`;
+            progressBar.style.background = '#f44336';
+            this.showNotification(`Bulk import failed: ${error.message}`, 'error');
+        } finally {
+            startBtn.disabled = false;
+            startBtn.style.opacity = '1';
+        }
     }
 }
 
