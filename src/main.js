@@ -54,8 +54,9 @@ class RouteCoinMe {
     setupDemoAreaClick() {
         document.addEventListener('click', (event) => {
             const demoArea = document.querySelector('.demo-placeholder');
+            const isAuthenticated = this.stravaAuth?.getCachedAuthStatus?.() ?? false;
             if (demoArea && demoArea.contains(event.target) && 
-                !this.stravaAuth.isAuthenticated() && 
+                !isAuthenticated && 
                 !demoArea.querySelector('.gpx-upload-area')) {
                 
                 // If not authenticated and no routes loaded, show upload option

@@ -302,14 +302,10 @@ class FileUploadHandler {
         
         // Check if user is authenticated with Strava and show appropriate content
         if (window.stravaAuth) {
-            // Check authentication status asynchronously
-            window.stravaAuth.isAuthenticated().then(isAuthenticated => {
-                if (isAuthenticated) {
-                    window.stravaAuth.showAuthenticatedFeatures();
-                }
-            }).catch(error => {
-                console.warn('⚠️ Failed to check authentication status:', error);
-            });
+            const isAuthenticated = window.stravaAuth.getCachedAuthStatus();
+            if (isAuthenticated) {
+                window.stravaAuth.showAuthenticatedFeatures();
+            }
         }
         
         console.log('🎨 Initial UI state displayed');

@@ -6,6 +6,8 @@
 class StravaAuth {
     constructor() {
         this.workerBaseUrl = window.location.origin; // Path-based API routing
+        this.cachedAuthStatus = null;
+        this.statusRefreshPromise = null;
         this.init();
     }
 
@@ -40,12 +42,7 @@ class StravaAuth {
 
             if (response.ok) {
                 const authData = await response.json();
-                
-                // Store non-sensitive data in localStorage for UI state
-                localStorage.setItem('rcm_was_authenticated', 'true');
-                if (authData.athlete) {
-                    localStorage.setItem('rcm_athlete_info', JSON.stringify(authData.athlete));
-                }
+                this.updateCachedAuthStatus(true, authData.athlete);
 
                 console.log('✅ Strava authentication successful');
                 
@@ -53,6 +50,7 @@ class StravaAuth {
                 window.history.replaceState({}, document.title, '/');
                 window.location.reload();
             } else {
+                this.updateCachedAuthStatus(false);
                 console.error('❌ Authentication failed');
                 window.history.replaceState({}, document.title, '/');
                 this.showNotification('Authentication failed. Please try again.', 'error');
@@ -60,21 +58,100 @@ class StravaAuth {
         } catch (error) {
             console.error('❌ Auth callback error:', error);
             window.history.replaceState({}, document.title, '/');
+            this.updateCachedAuthStatus(false);
             this.showNotification('Authentication error. Please try again.', 'error');
         }
     }
 
-    // Check if user is authenticated by querying the worker
-    async isAuthenticated() {
-        try {
-            const response = await fetch(`${this.workerBaseUrl}/api/auth/status`, {
-                credentials: 'include'
-            });
-            return response.ok;
-        } catch (error) {
-            console.warn('⚠️ Auth check failed:', error);
-            return false;
+    // Retrieve cached auth status without hitting the network
+    getCachedAuthStatus() {
+        if (typeof this.cachedAuthStatus === 'boolean') {
+            return this.cachedAuthStatus;
         }
+
+        try {
+            const storedValue = localStorage.getItem('rcm_was_authenticated');
+            if (storedValue === null) {
+                this.cachedAuthStatus = false;
+            } else {
+                this.cachedAuthStatus = storedValue === 'true';
+            }
+        } catch (error) {
+            console.warn('⚠️ Failed to read cached auth status:', error);
+            this.cachedAuthStatus = false;
+        }
+
+        return this.cachedAuthStatus;
+    }
+
+    // Persist new auth state in memory and local storage
+    updateCachedAuthStatus(isAuthenticated, athlete = null) {
+        this.cachedAuthStatus = !!isAuthenticated;
+
+        try {
+            localStorage.setItem('rcm_was_authenticated', this.cachedAuthStatus ? 'true' : 'false');
+        } catch (error) {
+            console.warn('⚠️ Failed to persist auth flag:', error);
+        }
+
+        if (this.cachedAuthStatus) {
+            if (athlete) {
+                try {
+                    localStorage.setItem('rcm_athlete_info', JSON.stringify(athlete));
+                } catch (error) {
+                    console.warn('⚠️ Failed to persist athlete info:', error);
+                }
+            }
+        } else {
+            try {
+                localStorage.removeItem('rcm_athlete_info');
+            } catch (error) {
+                console.warn('⚠️ Failed to clear athlete info:', error);
+            }
+        }
+    }
+
+    // Ask the worker for fresh auth status and sync caches
+    async refreshAuthStatus() {
+        if (this.statusRefreshPromise) {
+            return this.statusRefreshPromise;
+        }
+
+        this.statusRefreshPromise = (async () => {
+            try {
+                const response = await fetch(`${this.workerBaseUrl}/api/auth/status`, {
+                    credentials: 'include'
+                });
+
+                if (!response.ok) {
+                    console.warn('⚠️ Auth status check failed:', response.status);
+                    this.updateCachedAuthStatus(false);
+                    return false;
+                }
+
+                const authData = await response.json();
+                this.updateCachedAuthStatus(true, authData?.athlete || null);
+                return true;
+            } catch (error) {
+                console.warn('⚠️ Auth status request error:', error);
+                this.updateCachedAuthStatus(false);
+                return false;
+            } finally {
+                this.statusRefreshPromise = null;
+            }
+        })();
+
+        return this.statusRefreshPromise;
+    }
+
+    // Check if user is authenticated by querying the worker
+    async isAuthenticated(options = {}) {
+        const { forceRefresh = false } = options;
+        if (!forceRefresh) {
+            return this.getCachedAuthStatus();
+        }
+
+        return this.refreshAuthStatus();
     }
 
     // Get athlete information from localStorage (non-sensitive data)
@@ -90,23 +167,36 @@ class StravaAuth {
 
     // Check if user was previously authenticated (for UI hints)
     wasPreviouslyAuthenticated() {
-        return localStorage.getItem('rcm_was_authenticated') === 'true';
+        return this.getCachedAuthStatus();
     }
 
     // Check for existing authentication on page load
     async checkExistingAuth() {
-        const isAuthenticated = await this.isAuthenticated();
+        const cachedStatus = this.getCachedAuthStatus();
         const athlete = this.getAthleteInfo();
 
-        if (isAuthenticated && athlete) {
-            console.log('✅ User already authenticated:', athlete);
+        if (cachedStatus && athlete) {
+            console.log('✅ User already authenticated (cached):', athlete);
             this.updateUIForAuthenticatedState(athlete);
         } else {
             console.log('ℹ️ User not authenticated');
-            if (this.wasPreviouslyAuthenticated()) {
-                console.log('💡 User was previously authenticated but session expired');
+            if (cachedStatus) {
+                console.log('💡 Cached auth flag is true but athlete data is missing');
             }
             this.updateUIForUnauthenticatedState();
+        }
+
+        const previousStatus = cachedStatus;
+        const refreshedStatus = await this.refreshAuthStatus();
+        if (refreshedStatus !== previousStatus) {
+            const updatedAthlete = this.getAthleteInfo();
+            if (refreshedStatus && updatedAthlete) {
+                console.log('✅ User authenticated after status refresh:', updatedAthlete);
+                this.updateUIForAuthenticatedState(updatedAthlete);
+            } else {
+                console.log('ℹ️ User not authenticated after status refresh');
+                this.updateUIForUnauthenticatedState();
+            }
         }
     }
 
@@ -495,8 +585,7 @@ class StravaAuth {
 
     // Clear local authentication state
     clearLocalAuthState() {
-        localStorage.removeItem('rcm_was_authenticated');
-        localStorage.removeItem('rcm_athlete_info');
+        this.updateCachedAuthStatus(false);
     }
     
     // Show a temporary notification
