@@ -214,7 +214,7 @@ class FileUploadHandler {
 
     // UNIFIED HANDLER: Handle any change to what routes are selected/visible
     handleSelectedRoutesChanged(data) {
-        console.log('� Selected routes changed - redrawing all visualizations');
+        console.log('🔄 Selected routes changed - redrawing all visualizations');
         
         // Ensure we're showing the routes UI
         this.showRoutesUI();

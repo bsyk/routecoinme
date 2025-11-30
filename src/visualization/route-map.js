@@ -221,6 +221,11 @@ class RouteMapVisualization {
         if (this.routeLayers.length === 0) return;
 
         try {
+            // Force Leaflet to recalculate map size (fixes tile loading issues)
+            if (this.map) {
+                this.map.invalidateSize();
+            }
+            
             // Collect all route bounds
             const allLatLngs = [];
             this.routeLayers.forEach(layer => {
@@ -232,7 +237,7 @@ class RouteMapVisualization {
 
             if (allLatLngs.length > 0) {
                 const group = new L.featureGroup(this.routeLayers.map(layer => layer.polyline));
-                this.map.fitBounds(group.getBounds(), { padding: [10, 10] });
+                this.map.fitBounds(group.getBounds(), { padding: [50, 50] });
                 this.currentBounds = group.getBounds();
             }
         } catch (error) {
