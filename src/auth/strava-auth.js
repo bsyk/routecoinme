@@ -757,13 +757,22 @@ class StravaAuth {
             progressDiv.style.display = 'block';
             startBtn.disabled = true;
             startBtn.style.opacity = '0.5';
-            statusDiv.textContent = 'Fetching activities from Strava...';
-            progressBar.style.width = '10%';
+            statusDiv.textContent = 'Gathering existing routes...';
+            progressBar.style.width = '5%';
+            
+            // Get existing Strava route IDs from storage to skip re-importing
+            const existingIds = window.fileUploader?.uploadedRoutes
+                .filter(route => route.id && route.id.startsWith('strava_'))
+                .map(route => route.id) || [];
             
             console.log(`📦 Starting bulk import from ${startDate} to ${endDate}`);
             console.log(`🎯 Activity types: ${selectedTypes.join(', ')}`);
+            console.log(`⏭️  Will skip ${existingIds.length} already-imported routes`);
             
-            // Call the worker bulk import endpoint
+            statusDiv.textContent = 'Fetching activities from Strava...';
+            progressBar.style.width = '10%';
+            
+            // Call the worker bulk import endpoint with existing IDs
             const response = await fetch(`${this.workerBaseUrl}/api/strava/bulk-import`, {
                 method: 'POST',
                 credentials: 'include',
@@ -773,7 +782,8 @@ class StravaAuth {
                 body: JSON.stringify({
                     startDate,
                     endDate,
-                    activityTypes: selectedTypes
+                    activityTypes: selectedTypes,
+                    existingIds: existingIds
                 })
             });
             
@@ -793,53 +803,25 @@ class StravaAuth {
             
             // Add all routes to the file uploader
             if (window.fileUploader && result.routes.length > 0) {
-                // Track statistics for user feedback
-                let reimported = 0;
-                let newImports = 0;
+
+                const routeList = result.routes.map(r => ({
+                    ...r,
+                    id: r.id || window.fileUploader.generateRouteId(),
+                    startTime: r.startTime ? new Date(r.startTime) : null,
+                }));
+
+                // Save all new routes
+                await window.fileUploader?.storageManager?.saveRoutes(routeList);
                 
-                // Load existing routes to check what's new vs reimport
-                const existingRoutes = await window.fileUploader.routeStorage.loadRoutes();
-                const existingIds = new Set(existingRoutes.map(r => r.id));
-                
-                // Add and save routes individually with Strava-based IDs
-                for (const route of result.routes) {
-                    // Parse startTime back to Date object if needed
-                    if (route.startTime) {
-                        route.startTime = new Date(route.startTime);
-                    }
-                    
-                    // Use Strava activity ID as the route ID (with prefix)
-                    const stravaId = route.metadata?.stravaId;
-                    if (stravaId) {
-                        route.id = `strava_${stravaId}`;
-                        
-                        // Track if this is a reimport or new import
-                        if (existingIds.has(route.id)) {
-                            reimported++;
-                            console.log(`🔄 Re-importing: ${route.name} (${route.id})`);
-                        } else {
-                            newImports++;
-                            console.log(`📥 New import: ${route.name} (${route.id})`);
-                        }
-                    } else {
-                        // Fallback to generated ID if no Strava ID available
-                        route.id = window.fileUploader.generateRouteId();
-                        newImports++;
-                    }
-                    
-                    // Save directly to IndexedDB (will overwrite if ID already exists)
-                    await window.fileUploader.routeStorage.saveRoute(route);
-                }
-                
-                console.log(`💾 Saved ${result.routes.length} routes to IndexedDB (${newImports} new, ${reimported} updated)`);
+                console.log(`💾 Saved ${routeList.length} routes to IndexedDB`);
                 
                 // Reload all routes from storage to ensure consistency
-                const allRoutes = await window.fileUploader.routeStorage.loadRoutes();
+                const allRoutes = await window.fileUploader?.storageManager?.loadRoutes();
                 window.fileUploader.uploadedRoutes = allRoutes;
                 
                 // Auto-select newly imported/updated routes for display
                 if (!window.fileUploader.isShowingAggregated) {
-                    result.routes.forEach(route => {
+                    routeList.forEach(route => {
                         window.fileUploader.selectedRoutes.add(route.id);
                     });
                 }
@@ -849,20 +831,17 @@ class StravaAuth {
                 // Trigger single UI update for all routes
                 window.fileUploader.notifyStateChange('selected-routes-changed', { 
                     reason: 'bulk-import-complete',
-                    count: result.routes.length
+                    count: routeList.length
                 });
                 
                 progressBar.style.width = '100%';
-                statusDiv.textContent = `Complete! Imported ${result.routes.length} activities.`;
+                statusDiv.textContent = `Complete! Imported ${routeList.length} activities.`;
                 
-                // Show summary with reimport info
-                let summaryMessage = '';
-                if (newImports > 0 && reimported > 0) {
-                    summaryMessage = `✅ ${newImports} new, 🔄 ${reimported} updated`;
-                } else if (reimported > 0) {
-                    summaryMessage = `🔄 Updated ${reimported} activities`;
-                } else {
-                    summaryMessage = `✅ Imported ${newImports} new activities`;
+                // Show comprehensive summary
+                let summaryMessage = `✅ Imported ${routeList.length} activities`;
+                
+                if (result.skipped && result.skipped.length > 0) {
+                    summaryMessage += `\n⏭️  ${result.skipped.length} already imported (skipped)`;
                 }
                 
                 if (result.errors.length > 0) {

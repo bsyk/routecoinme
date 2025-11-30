@@ -451,7 +451,7 @@ async function bulkImportActivities(request, authToken) {
 
     try {
         const body = await request.json();
-        const { startDate, endDate, activityTypes } = body;
+        const { startDate, endDate, activityTypes, existingIds = [] } = body;
 
         if (!startDate || !endDate) {
             return new Response(JSON.stringify({
@@ -474,9 +474,23 @@ async function bulkImportActivities(request, authToken) {
         if (activityTypes && activityTypes.length > 0) {
             console.log(`🎯 Filtering by types: ${activityTypes.join(', ')}`);
         }
+        if (existingIds.length > 0) {
+            console.log(`⏭️  Skipping ${existingIds.length} already-imported activities`);
+        }
 
-        // Fetch all activities in the date range (paginated)
-        const allActivities = [];
+        // Convert existing IDs to a Set for O(1) lookup (remove 'strava_' prefix)
+        const existingStravaIds = new Set(
+            existingIds
+                .filter(id => id.startsWith('strava_'))
+                .map(id => id.replace('strava_', ''))
+        );
+
+        // Fetch and process activities with parallel stream fetching
+        const routes = [];
+        const errors = [];
+        const skipped = [];
+        const streamPromises = [];
+        
         let page = 1;
         const perPage = 200; // Max allowed by Strava
 
@@ -517,7 +531,43 @@ async function bulkImportActivities(request, authToken) {
                 break; // No more activities
             }
 
-            allActivities.push(...pageActivities);
+            // Filter and kick off parallel stream fetches for this page
+            for (const activity of pageActivities) {
+                // Skip if already imported
+                if (existingStravaIds.has(activity.id.toString())) {
+                    skipped.push({
+                        activityId: activity.id,
+                        name: activity.name,
+                        reason: 'Already imported'
+                    });
+                    continue;
+                }
+
+                // Filter by activity sport_type if specified
+                if (activityTypes && activityTypes.length > 0 && !activityTypes.includes(activity.sport_type)) {
+                    continue;
+                }
+
+                // Kick off parallel stream fetch
+                const streamPromise = fetchActivityStreams(activity, authToken)
+                    .then(result => {
+                        if (result.success) {
+                            routes.push(result.route);
+                        } else {
+                            errors.push(result.error);
+                        }
+                    })
+                    .catch(error => {
+                        console.error(`❌ Unexpected error for activity ${activity.id}:`, error);
+                        errors.push({
+                            activityId: activity.id,
+                            name: activity.name,
+                            error: error.message || 'Unexpected error'
+                        });
+                    });
+
+                streamPromises.push(streamPromise);
+            }
             
             if (pageActivities.length < perPage) {
                 break; // Last page
@@ -526,70 +576,21 @@ async function bulkImportActivities(request, authToken) {
             page++;
         }
 
-        console.log(`✅ Found ${allActivities.length} activities in date range`);
+        // Wait for all parallel stream fetches to complete
+        console.log(`⏳ Waiting for ${streamPromises.length} parallel stream fetches to complete...`);
+        await Promise.all(streamPromises);
 
-        // Filter by activity sport_type if specified
-        let filteredActivities = allActivities;
-        if (activityTypes && activityTypes.length > 0) {
-            filteredActivities = allActivities.filter(activity => 
-                activityTypes.includes(activity.sport_type)
-            );
-            console.log(`✅ Filtered to ${filteredActivities.length} activities matching sport types`);
-        }
-
-        // Import each activity (fetch streams and convert to route)
-        const routes = [];
-        const errors = [];
-
-        for (const activity of filteredActivities) {
-            try {
-                console.log(`📥 Importing activity ${activity.id}: ${activity.name}`);
-                
-                // Fetch streams for this activity
-                const streamsResponse = await fetch(
-                    `https://www.strava.com/api/v3/activities/${activity.id}/streams?keys=latlng,altitude,time&key_by_type=true`,
-                    {
-                        method: 'GET',
-                        headers: {
-                            'Authorization': `Bearer ${authToken}`,
-                            'Accept': 'application/json',
-                        },
-                    }
-                );
-
-                if (!streamsResponse.ok) {
-                    console.warn(`⚠️ Failed to fetch streams for activity ${activity.id}`);
-                    errors.push({
-                        activityId: activity.id,
-                        name: activity.name,
-                        error: 'Failed to fetch GPS data'
-                    });
-                    continue;
-                }
-
-                const streams = await streamsResponse.json();
-                const route = convertStravaActivityToRoute(activity, streams);
-                routes.push(route);
-
-            } catch (error) {
-                console.error(`❌ Error importing activity ${activity.id}:`, error);
-                errors.push({
-                    activityId: activity.id,
-                    name: activity.name,
-                    error: error.message
-                });
-            }
-        }
-
-        console.log(`✅ Bulk import complete: ${routes.length} routes imported, ${errors.length} errors`);
+        console.log(`✅ Bulk import complete: ${routes.length} routes imported, ${skipped.length} skipped, ${errors.length} errors`);
 
         return new Response(JSON.stringify({
             success: true,
             routes: routes,
             errors: errors,
+            skipped: skipped,
             summary: {
-                total: filteredActivities.length,
+                total: routes.length + skipped.length + errors.length,
                 imported: routes.length,
+                skipped: skipped.length,
                 failed: errors.length
             }
         }), {
@@ -612,5 +613,54 @@ async function bulkImportActivities(request, authToken) {
                 ...corsHeaders,
             },
         });
+    }
+}
+
+// Helper function to fetch activity streams and convert to route
+async function fetchActivityStreams(activity, authToken) {
+    try {
+        console.log(`📥 Fetching streams for activity ${activity.id}: ${activity.name}`);
+        
+        const streamsResponse = await fetch(
+            `https://www.strava.com/api/v3/activities/${activity.id}/streams?keys=latlng,altitude,time&key_by_type=true`,
+            {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Accept': 'application/json',
+                },
+            }
+        );
+
+        if (!streamsResponse.ok) {
+            console.warn(`⚠️ Failed to fetch streams for activity ${activity.id}`);
+            return {
+                success: false,
+                error: {
+                    activityId: activity.id,
+                    name: activity.name,
+                    error: 'Failed to fetch GPS data'
+                }
+            };
+        }
+
+        const streams = await streamsResponse.json();
+        const route = convertStravaActivityToRoute(activity, streams);
+        
+        return {
+            success: true,
+            route: route
+        };
+
+    } catch (error) {
+        console.error(`❌ Error fetching streams for activity ${activity.id}:`, error);
+        return {
+            success: false,
+            error: {
+                activityId: activity.id,
+                name: activity.name,
+                error: error.message || 'Failed to process activity'
+            }
+        };
     }
 }
