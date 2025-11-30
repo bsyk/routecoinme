@@ -294,7 +294,11 @@ class StravaAuth {
             // Add to file uploader
             if (window.fileUploader) {
                 window.fileUploader.addRoute(route);
-                console.log('✅ Activity imported successfully');
+                
+                // Save to IndexedDB storage
+                await window.fileUploader.saveRoutesToStorage();
+                
+                console.log('✅ Activity imported and saved successfully');
                 alert(`Successfully imported: ${route.name}`);
             } else {
                 console.error('❌ File uploader not available');
