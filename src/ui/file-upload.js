@@ -614,7 +614,8 @@ class FileUploadHandler {
         console.log(message);
         
         if (results.failed.length > 0) {
-            alert(`Upload completed with some errors:\n\n${message}`);
+            const errorSummary = `Failed to process ${results.failed.length} file(s). Check console for details.`;
+            this.showNotification(errorSummary, 'error');
         }
     }
 
@@ -627,7 +628,7 @@ class FileUploadHandler {
     // Show route list
     showRouteList() {
         if (this.uploadedRoutes.length === 0) {
-            alert('No routes uploaded yet. Upload some GPX files first!');
+            this.showNotification('No routes uploaded yet. Upload some GPX files first!', 'info');
             return;
         }
 
@@ -637,7 +638,9 @@ class FileUploadHandler {
    📏 ${route.distance.toFixed(1)}km  ⛰️ ${Math.round(route.elevationGain)}m  ⏱️ ${duration}`;
         }).join('\n\n');
 
-        alert(`📋 Uploaded Routes (${this.uploadedRoutes.length}):\n\n${routeList}`);
+        // Show route info in console (too much for a notification)
+        console.log(`📋 Uploaded Routes (${this.uploadedRoutes.length}):\n\n${routeList}`);
+        this.showNotification(`${this.uploadedRoutes.length} routes loaded. Check console for details.`, 'info');
     }
 
     // Show aggregation options dialog
@@ -647,7 +650,7 @@ class FileUploadHandler {
         );
 
         if (selectedRoutesToAggregate.length < 2) {
-            alert('Please select at least 2 routes to aggregate. Use the checkboxes in the route list to select routes.');
+            this.showNotification('Please select at least 2 routes to aggregate', 'warning');
             return;
         }
 
@@ -818,11 +821,13 @@ class FileUploadHandler {
             }
             const elevationDescription = elevationMode === 'actual' ? 'actual elevation' : 'cumulative climbing';
             
-            alert(`🔗 Route Aggregation Complete!\n\nCombined ${this._routesToAggregate.length} routes using ${modeDescription} aggregation with ${elevationDescription}.\nTotal distance: ${this.aggregatedRoute.distance.toFixed(1)}km\nTotal elevation gain: ${Math.round(this.aggregatedRoute.elevationGain)}m`);
+            const successMessage = `🔗 Aggregated ${this._routesToAggregate.length} routes: ${this.aggregatedRoute.distance.toFixed(1)}km, ${Math.round(this.aggregatedRoute.elevationGain)}m elevation`;
+            console.log(`Route Aggregation Complete! Combined ${this._routesToAggregate.length} routes using ${modeDescription} aggregation with ${elevationDescription}.`);
+            this.showNotification(successMessage, 'success');
 
         } catch (error) {
             console.error('❌ Failed to aggregate routes:', error);
-            alert('Failed to aggregate routes. Please check the console for details.');
+            this.showNotification('Failed to aggregate routes. Check console for details.', 'error');
         }
         
         // Clean up
@@ -1549,7 +1554,7 @@ class FileUploadHandler {
         }
 
         if (!routeToDownload) {
-            alert('Route not found for download.');
+            this.showNotification('Route not found for download', 'error');
             return;
         }
 
@@ -1561,9 +1566,10 @@ class FileUploadHandler {
             this.downloadFile(gpxContent, filename, 'application/gpx+xml');
             
             console.log(`📥 Downloaded route: ${filename}`);
+            this.showNotification(`📥 Downloaded: ${filename}`, 'success');
         } catch (error) {
             console.error('❌ Failed to download route:', error);
-            alert('Failed to download route. Please check the console for details.');
+            this.showNotification('Failed to download route. Check console for details.', 'error');
         }
     }
 
@@ -2012,6 +2018,52 @@ class FileUploadHandler {
         if (this.viewer3D) {
             this.viewer3D.resetView();
         }
+    }
+
+    // Show a temporary notification toast
+    showNotification(message, type = 'info', duration = null) {
+        // Default duration based on type and message length
+        if (!duration) {
+            duration = type === 'error' ? 5000 : 3000;
+            // Longer for longer messages
+            if (message.length > 50) duration += 1000;
+        }
+        
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.textContent = message;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            background: ${type === 'success' ? '#4CAF50' : type === 'error' ? '#f44336' : type === 'warning' ? '#ff9800' : '#2196F3'};
+            color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 10000;
+            max-width: 400px;
+            word-wrap: break-word;
+            animation: slideIn 0.3s ease-out;
+            cursor: pointer;
+        `;
+        
+        // Click to dismiss
+        notification.addEventListener('click', () => {
+            notification.style.animation = 'slideOut 0.3s ease-out';
+            setTimeout(() => notification.remove(), 300);
+        });
+        
+        document.body.appendChild(notification);
+        
+        // Auto-remove after duration
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.style.animation = 'slideOut 0.3s ease-out';
+                setTimeout(() => notification.remove(), 300);
+            }
+        }, duration);
     }
 }
 

@@ -54,13 +54,13 @@ class StravaAuth {
                 window.location.reload();
             } else {
                 console.error('❌ Authentication failed');
-                alert('Authentication failed. Please try again.');
                 window.history.replaceState({}, document.title, '/');
+                this.showNotification('Authentication failed. Please try again.', 'error');
             }
         } catch (error) {
             console.error('❌ Auth callback error:', error);
-            alert('Authentication error. Please try again.');
             window.history.replaceState({}, document.title, '/');
+            this.showNotification('Authentication error. Please try again.', 'error');
         }
     }
 
@@ -266,7 +266,7 @@ class StravaAuth {
             if (error.message.includes('Authentication required')) {
                 this.authenticate();
             } else {
-                alert(`Failed to fetch activities: ${error.message}`);
+                this.showNotification(`Failed to fetch activities: ${error.message}`, 'error');
             }
         }
     }
@@ -374,16 +374,16 @@ class StravaAuth {
                 // Close the modal if open
                 this.closeActivitiesModal();
                 
-                // Show success notification (less intrusive than alert)
+                // Show success notification
                 this.showNotification(`✅ Imported: ${route.name}`, 'success');
             } else {
                 console.error('❌ File uploader not available');
-                alert('Error: File uploader not available');
+                this.showNotification('Error: File uploader not available', 'error');
             }
             
         } catch (error) {
             console.error('❌ Error importing activity:', error);
-            alert(`Failed to import activity: ${error.message}`);
+            this.showNotification(`Failed to import activity: ${error.message}`, 'error');
         }
     }
 
@@ -422,12 +422,14 @@ class StravaAuth {
 
     // Show import dialog
     showImportDialog() {
-        alert('Bulk import dialog coming soon!\n\nThis will allow you to:\n- Select multiple activities\n- Filter by date range\n- Choose activity types');
+        this.showNotification('Bulk import feature coming soon! 🚧', 'info');
+        // TODO: Implement bulk import with filters for date range and activity types
     }
 
     // Show settings
     showSettings() {
-        alert('Settings panel coming soon!\n\nThis will include:\n- Privacy preferences\n- Data storage options\n- Export settings');
+        this.showNotification('Settings panel coming soon! ⚙️', 'info');
+        // TODO: Implement settings for privacy, data storage, and export options
     }
 
     // Logout user
@@ -458,7 +460,14 @@ class StravaAuth {
     }
     
     // Show a temporary notification
-    showNotification(message, type = 'info') {
+    showNotification(message, type = 'info', duration = null) {
+        // Default duration based on type and message length
+        if (!duration) {
+            duration = type === 'error' ? 5000 : 3000;
+            // Longer for longer messages
+            if (message.length > 50) duration += 1000;
+        }
+        
         // Create notification element
         const notification = document.createElement('div');
         notification.className = `notification notification-${type}`;
@@ -473,16 +482,27 @@ class StravaAuth {
             border-radius: 5px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             z-index: 10000;
+            max-width: 400px;
+            word-wrap: break-word;
             animation: slideIn 0.3s ease-out;
+            cursor: pointer;
         `;
+        
+        // Click to dismiss
+        notification.addEventListener('click', () => {
+            notification.style.animation = 'slideOut 0.3s ease-out';
+            setTimeout(() => notification.remove(), 300);
+        });
         
         document.body.appendChild(notification);
         
-        // Remove after 3 seconds
+        // Auto-remove after duration
         setTimeout(() => {
-            notification.style.animation = 'slideOut 0.3s ease-out';
-            setTimeout(() => notification.remove(), 300);
-        }, 3000);
+            if (notification.parentNode) {
+                notification.style.animation = 'slideOut 0.3s ease-out';
+                setTimeout(() => notification.remove(), 300);
+            }
+        }, duration);
     }
 }
 
