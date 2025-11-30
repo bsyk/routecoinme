@@ -53,17 +53,17 @@ export default {
             
             // Strava API requests
             if (url.pathname.startsWith('/api/strava/')) {
-                const checkFailed = checkStravaToken(request);
-                if (checkFailed) {
-                    return checkFailed;
+                const checkToken = checkStravaToken(request);
+                if (!checkToken.authToken) {
+                    return checkToken;
                 }
 
                 if (url.pathname === '/api/strava/activities') {
-                    return await getActivities(authToken, url.searchParams);
+                    return await getActivities(checkToken.authToken, url.searchParams);
                 }
                 if (url.pathname.startsWith('/api/strava/import-activity/')) {
                     const importActivityId = url.pathname.split('/')[4];
-                    return await importActivityAsRoute(authToken, importActivityId);
+                    return await importActivityAsRoute(checkToken.authToken, importActivityId);
                 }
             }
 
@@ -243,7 +243,7 @@ function checkStravaToken(request) {
         });
     }
 
-    return null; // Token is valid, proceed
+    return { authToken }; // Token is valid, proceed
 }
 
 // Get activities list

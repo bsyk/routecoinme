@@ -269,7 +269,7 @@ class StravaAuth {
                 <br>
                 <small>${activity.type} • ${(activity.distance / 1000).toFixed(1)}km • ${activity.start_date_local}</small>
                 <br>
-                <button class="btn btn-sm btn-primary" onclick="window.stravaAuth.importActivity('${activity.id}')" style="margin-top: 5px;">
+                <button class="btn btn-sm btn-primary import-activity-btn" onclick="window.stravaAuth.importActivity('${activity.id}')" style="margin-top: 5px; transition: all 0.3s ease;">
                     📥 Import
                 </button>
             </div>
@@ -334,8 +334,31 @@ class StravaAuth {
 
     // Import a single activity
     async importActivity(activityId) {
+        // Find the import button for this activity
+        const importBtn = document.querySelector(`button[onclick*="importActivity('${activityId}')"]`);
+        const originalButtonHTML = importBtn ? importBtn.innerHTML : null;
+        
+        // Disable all import buttons to prevent multiple simultaneous imports
+        const allImportButtons = document.querySelectorAll('.import-activity-btn');
+        
         try {
             console.log(`📥 Importing activity ${activityId}...`);
+            
+            // Disable all buttons
+            allImportButtons.forEach(btn => {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+                btn.style.cursor = 'not-allowed';
+            });
+            
+            // Show loading state on clicked button
+            if (importBtn) {
+                importBtn.innerHTML = '⏳ Importing...';
+                importBtn.style.opacity = '0.7';
+            }
+            
+            // Show processing notification
+            this.showNotification('⏳ Importing activity from Strava...', 'info', 2000);
             
             // Fetch the activity as a route from the worker (does all the heavy lifting)
             const route = await this.callStravaAPI(`/import-activity/${activityId}`);
@@ -362,11 +385,30 @@ class StravaAuth {
             } else {
                 console.error('❌ File uploader not available');
                 this.showNotification('Error: File uploader not available', 'error');
+                
+                // Re-enable all buttons on error
+                this.reEnableImportButtons(allImportButtons, importBtn, originalButtonHTML);
             }
             
         } catch (error) {
             console.error('❌ Error importing activity:', error);
             this.showNotification(`Failed to import activity: ${error.message}`, 'error');
+            
+            // Re-enable all buttons on error
+            this.reEnableImportButtons(allImportButtons, importBtn, originalButtonHTML);
+        }
+    }
+    
+    // Helper to re-enable import buttons after error
+    reEnableImportButtons(allButtons, clickedButton, originalHTML) {
+        allButtons.forEach(btn => {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
+        });
+        
+        if (clickedButton && originalHTML) {
+            clickedButton.innerHTML = originalHTML;
         }
     }
 
