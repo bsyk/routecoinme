@@ -729,10 +729,10 @@ class FileUploadHandler {
                             </label>
                             
                             <label class="aggregation-option">
-                                <input type="radio" name="path-pattern" value="stelvio.json">
+                                <input type="radio" name="path-pattern" value="semi-circle.json">
                                 <div class="option-content">
-                                    <strong>⚡ Stelvio Pass</strong>
-                                    <p>Stelvio Pass mountain road</p>
+                                    <strong>⚡ Semi-Circle</strong>
+                                    <p>Semi-circle path that explores the full arc</p>
                                 </div>
                             </label>
 
