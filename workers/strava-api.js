@@ -428,7 +428,7 @@ function convertStravaActivityToRoute(activity, streams) {
 
     // Return route in the format expected by the client
     return {
-        id: `strava_${activity.id}`,
+        id: `strava_${activity.id}`, // Use Strava ID as primary key to prevent duplicates
         filename: `${activity.name}.gpx`,
         name: activity.name,
         type: activity.sport_type || activity.type, // Use sport_type, fallback to type for compatibility

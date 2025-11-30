@@ -216,6 +216,9 @@ class FileUploadHandler {
     handleSelectedRoutesChanged(data) {
         console.log('� Selected routes changed - redrawing all visualizations');
         
+        // Ensure we're showing the routes UI
+        this.showRoutesUI();
+
         // Clear ALL routes from visualizations first
         this.clearAllVisualizationsRoutes();
         
@@ -229,6 +232,7 @@ class FileUploadHandler {
             console.log(`➕ Adding ${this.selectedRoutes.size} selected routes to visualizations`);
             this.uploadedRoutes.forEach(route => {
                 if (this.selectedRoutes.has(route.id)) {
+                    console.log(`  - Adding route: ${route.filename} (${route.id})`);
                     this.addRouteToAllVisualizations(route);
                 }
             });
@@ -295,6 +299,18 @@ class FileUploadHandler {
         if (landingState) landingState.style.display = 'block';
         if (fileUploadSection) fileUploadSection.style.display = 'none';
         if (routeVisualizationArea) routeVisualizationArea.style.display = 'none';
+        
+        // Check if user is authenticated with Strava and show appropriate content
+        if (window.stravaAuth) {
+            // Check authentication status asynchronously
+            window.stravaAuth.isAuthenticated().then(isAuthenticated => {
+                if (isAuthenticated) {
+                    window.stravaAuth.showAuthenticatedFeatures();
+                }
+            }).catch(error => {
+                console.warn('⚠️ Failed to check authentication status:', error);
+            });
+        }
         
         console.log('🎨 Initial UI state displayed');
     }
@@ -542,8 +558,10 @@ class FileUploadHandler {
             this.uploadedRoutes.splice(0, this.uploadedRoutes.length - this.maxFiles + 1);
         }
 
-        // Add unique ID
-        routeData.id = this.generateRouteId();
+        // Add unique ID only if route doesn't already have one (e.g., from Strava import)
+        if (!routeData.id) {
+            routeData.id = this.generateRouteId();
+        }
         this.uploadedRoutes.push(routeData);
 
         // Auto-select new routes for display (unless we're showing aggregated route)
@@ -551,9 +569,9 @@ class FileUploadHandler {
             this.selectedRoutes.add(routeData.id);
         }
 
-        console.log(`✅ Added route: ${routeData.filename}`);
+        console.log(`✅ Added route: ${routeData.filename} (ID: ${routeData.id})`);
         
-        // Single notification - UI updates happen automatically
+        // Notify state change - UI updates happen in handlers
         this.notifyStateChange('selected-routes-changed', { reason: 'route-added' });
     }
 

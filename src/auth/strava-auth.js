@@ -190,25 +190,22 @@ class StravaAuth {
         // Add Strava import button to upload actions if it doesn't exist
         this.addStravaImportButton();
         
-        // If no routes are loaded, show the Strava dashboard in the demo area
-        if (window.fileUploader && window.fileUploader.uploadedRoutes.length === 0) {
-            const demoArea = document.querySelector('.demo-placeholder');
-            if (demoArea && demoArea.querySelector('.landing-state')) {
-                demoArea.innerHTML = `
-                    <div class="landing-state">
-                        <h3>🎉 Connected to Strava!</h3>
-                        <p>Import activities from Strava or upload GPX files to get started.</p>
-                        <div class="landing-actions">
-                            <button class="btn btn-primary" onclick="window.stravaAuth.fetchActivities()">
-                                📊 Browse Strava Activities
-                            </button>
-                            <button class="btn btn-secondary" onclick="window.fileUploader?.showFileUploadUI()">
-                                � Upload GPX Files
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }
+        // Update ONLY the landing state content if it's visible (don't touch demo-placeholder)
+        const landingState = document.getElementById('landing-state');
+        if (landingState && window.getComputedStyle(landingState).display !== 'none') {
+            // Show Strava-connected landing page content
+            landingState.innerHTML = `
+                <h3>🎉 Connected to Strava!</h3>
+                <p>Import activities from Strava or upload GPX files to get started.</p>
+                <div class="landing-actions">
+                    <button class="btn btn-primary" onclick="window.stravaAuth.fetchActivities()">
+                        📊 Browse Strava Activities
+                    </button>
+                    <button class="btn btn-secondary" onclick="window.fileUploader?.showFileUploadUI()">
+                        📁 Upload GPX Files
+                    </button>
+                </div>
+            `;
         }
     }
     
@@ -256,17 +253,30 @@ class StravaAuth {
             modal = this.createStravaActivitiesModal();
         }
         
-        const activitiesHTML = activities.map(activity => `
-            <div class="activity-item" style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px; background: white;">
-                <strong>${activity.name}</strong>
-                <br>
-                <small>${activity.sport_type || activity.type} • ${(activity.distance / 1000).toFixed(1)}km • ${activity.start_date_local}</small>
-                <br>
-                <button class="btn btn-sm btn-primary import-activity-btn" onclick="window.stravaAuth.importActivity('${activity.id}')" style="margin-top: 5px; transition: all 0.3s ease;">
-                    📥 Import
-                </button>
-            </div>
-        `).join('');
+        // Get existing route IDs to check for reimports
+        const existingIds = new Set(
+            window.fileUploader?.uploadedRoutes.map(r => r.id) || []
+        );
+        
+        const activitiesHTML = activities.map(activity => {
+            const stravaRouteId = `strava_${activity.id}`;
+            const isReimport = existingIds.has(stravaRouteId);
+            const buttonIcon = isReimport ? '🔄' : '📥';
+            const buttonText = isReimport ? 'Reimport' : 'Import';
+            const buttonClass = isReimport ? 'btn-secondary' : 'btn-primary';
+            
+            return `
+                <div class="activity-item" style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px; background: white;">
+                    <strong>${activity.name}</strong>
+                    <br>
+                    <small>${activity.sport_type || activity.type} • ${(activity.distance / 1000).toFixed(1)}km • ${activity.start_date_local}</small>
+                    <br>
+                    <button class="btn btn-sm ${buttonClass} import-activity-btn" onclick="window.stravaAuth.importActivity('${activity.id}')" style="margin-top: 5px; transition: all 0.3s ease;">
+                        ${buttonIcon} ${buttonText}
+                    </button>
+                </div>
+            `;
+        }).join('');
 
         const modalContent = modal.querySelector('.strava-modal-content');
         if (modalContent) {
@@ -368,18 +378,32 @@ class StravaAuth {
             
             // Add to file uploader
             if (window.fileUploader) {
+                // Check if this is a reimport by looking at existing routes
+                const existingRoute = window.fileUploader.uploadedRoutes.find(r => r.id === route.id);
+                const isReimport = !!existingRoute;
+                
+                if (isReimport) {
+                    console.log(`� Re-importing: ${route.name} (${route.id})`);
+                } else {
+                    console.log(`📥 New import: ${route.name} (${route.id})`);
+                }
+                
                 window.fileUploader.addRoute(route);
                 
-                // Save to IndexedDB storage
+                // Save to IndexedDB storage (will overwrite if ID already exists)
                 await window.fileUploader.saveRoutesToStorage();
                 
                 console.log('✅ Activity imported and saved successfully');
                 
                 // Close the modal if open
                 this.closeActivitiesModal();
+
+                // Ensure the viz is shown
+                window.fileUploader.hideLoadingState();
                 
-                // Show success notification
-                this.showNotification(`✅ Imported: ${route.name}`, 'success');
+                // Show success notification with reimport indicator
+                const message = isReimport ? `🔄 Updated: ${route.name}` : `✅ Imported: ${route.name}`;
+                this.showNotification(message, 'success');
             } else {
                 console.error('❌ File uploader not available');
                 this.showNotification('Error: File uploader not available', 'error');
@@ -731,27 +755,58 @@ class StravaAuth {
             
             // Add all routes to the file uploader
             if (window.fileUploader && result.routes.length > 0) {
-                // Add routes without triggering individual UI updates
+                // Track statistics for user feedback
+                let reimported = 0;
+                let newImports = 0;
+                
+                // Load existing routes to check what's new vs reimport
+                const existingRoutes = await window.fileUploader.routeStorage.loadRoutes();
+                const existingIds = new Set(existingRoutes.map(r => r.id));
+                
+                // Add and save routes individually with Strava-based IDs
                 for (const route of result.routes) {
                     // Parse startTime back to Date object if needed
                     if (route.startTime) {
                         route.startTime = new Date(route.startTime);
                     }
                     
-                    // Add route directly to array without notification
-                    route.id = window.fileUploader.generateRouteId();
-                    window.fileUploader.uploadedRoutes.push(route);
-                    
-                    // Auto-select new routes for display (unless showing aggregated route)
-                    if (!window.fileUploader.isShowingAggregated) {
-                        window.fileUploader.selectedRoutes.add(route.id);
+                    // Use Strava activity ID as the route ID (with prefix)
+                    const stravaId = route.metadata?.stravaId;
+                    if (stravaId) {
+                        route.id = `strava_${stravaId}`;
+                        
+                        // Track if this is a reimport or new import
+                        if (existingIds.has(route.id)) {
+                            reimported++;
+                            console.log(`🔄 Re-importing: ${route.name} (${route.id})`);
+                        } else {
+                            newImports++;
+                            console.log(`📥 New import: ${route.name} (${route.id})`);
+                        }
+                    } else {
+                        // Fallback to generated ID if no Strava ID available
+                        route.id = window.fileUploader.generateRouteId();
+                        newImports++;
                     }
+                    
+                    // Save directly to IndexedDB (will overwrite if ID already exists)
+                    await window.fileUploader.routeStorage.saveRoute(route);
                 }
                 
-                console.log(`✅ Added ${result.routes.length} routes to collection`);
+                console.log(`💾 Saved ${result.routes.length} routes to IndexedDB (${newImports} new, ${reimported} updated)`);
                 
-                // Save all routes to storage
-                await window.fileUploader.saveRoutesToStorage();
+                // Reload all routes from storage to ensure consistency
+                const allRoutes = await window.fileUploader.routeStorage.loadRoutes();
+                window.fileUploader.uploadedRoutes = allRoutes;
+                
+                // Auto-select newly imported/updated routes for display
+                if (!window.fileUploader.isShowingAggregated) {
+                    result.routes.forEach(route => {
+                        window.fileUploader.selectedRoutes.add(route.id);
+                    });
+                }
+                
+                console.log(`✅ Reloaded ${allRoutes.length} total routes from storage`);
                 
                 // Trigger single UI update for all routes
                 window.fileUploader.notifyStateChange('selected-routes-changed', { 
@@ -762,10 +817,18 @@ class StravaAuth {
                 progressBar.style.width = '100%';
                 statusDiv.textContent = `Complete! Imported ${result.routes.length} activities.`;
                 
-                // Show summary
-                let summaryMessage = `✅ Successfully imported ${result.routes.length} activities`;
+                // Show summary with reimport info
+                let summaryMessage = '';
+                if (newImports > 0 && reimported > 0) {
+                    summaryMessage = `✅ ${newImports} new, 🔄 ${reimported} updated`;
+                } else if (reimported > 0) {
+                    summaryMessage = `🔄 Updated ${reimported} activities`;
+                } else {
+                    summaryMessage = `✅ Imported ${newImports} new activities`;
+                }
+                
                 if (result.errors.length > 0) {
-                    summaryMessage += `\n⚠️ ${result.errors.length} activities failed to import`;
+                    summaryMessage += `\n⚠️ ${result.errors.length} failed to import`;
                 }
                 this.showNotification(summaryMessage, 'success', 5000);
                 
