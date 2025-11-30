@@ -298,6 +298,7 @@ async function getActivities(authToken, searchParams) {
             status: 200,
             headers: {
                 'Content-Type': 'application/json',
+                'Cache-Control': 'private, max-age=1800', // Cache in browser only for 30 minutes
                 ...corsHeaders,
             },
         });

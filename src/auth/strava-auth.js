@@ -139,15 +139,8 @@ class StravaAuth {
     }
 
     // Helper methods for Strava API calls
-    async getActivities(options = {}) {
-        const params = new URLSearchParams();
-        if (options.page) params.append('page', options.page);
-        if (options.per_page) params.append('per_page', options.per_page);
-        if (options.before) params.append('before', options.before);
-        if (options.after) params.append('after', options.after);
-
-        const endpoint = `/activities${params.toString() ? '?' + params.toString() : ''}`;
-        return this.callStravaAPI(endpoint);
+    async getRecentActivities() {
+        return this.callStravaAPI('/activities?per_page=10');
     }
 
     // Update UI for authenticated user
@@ -242,7 +235,7 @@ class StravaAuth {
         console.log('📊 Fetching Strava activities...');
         
         try {
-            const activities = await this.getActivities({ per_page: 10 });
+            const activities = await this.getRecentActivities();
             console.log(`✅ Fetched ${activities.length} activities`);
             this.showActivitiesList(activities);
         } catch (error) {
@@ -410,18 +403,6 @@ class StravaAuth {
         if (clickedButton && originalHTML) {
             clickedButton.innerHTML = originalHTML;
         }
-    }
-
-    // Show import dialog
-    showImportDialog() {
-        this.showNotification('Bulk import feature coming soon! 🚧', 'info');
-        // TODO: Implement bulk import with filters for date range and activity types
-    }
-
-    // Show settings
-    showSettings() {
-        this.showNotification('Settings panel coming soon! ⚙️', 'info');
-        // TODO: Implement settings for privacy, data storage, and export options
     }
 
     // Logout user
