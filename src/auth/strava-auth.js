@@ -209,23 +209,47 @@ class StravaAuth {
     // Show features available to authenticated users
     showAuthenticatedFeatures() {
         console.log('🎉 Showing authenticated features...');
-        const demoArea = document.querySelector('.demo-placeholder');
-        if (demoArea) {
-            demoArea.innerHTML = `
-                <h3>🎉 Connected to Strava!</h3>
-                <p>You're now authenticated and ready to fetch your activities.</p>
-                <div class="auth-features">
-                    <button class="btn btn-primary" onclick="window.stravaAuth.fetchActivities()">
-                        📊 Fetch Recent Activities
-                    </button>
-                    <button class="btn btn-success" onclick="window.stravaAuth.showImportDialog()">
-                        📥 Import Activities
-                    </button>
-                    <button class="btn btn-secondary" onclick="window.stravaAuth.showSettings()">
-                        ⚙️ Settings
-                    </button>
-                </div>
-            `;
+        
+        // Add Strava import button to upload actions if it doesn't exist
+        this.addStravaImportButton();
+        
+        // If no routes are loaded, show the Strava dashboard in the demo area
+        if (window.fileUploader && window.fileUploader.uploadedRoutes.length === 0) {
+            const demoArea = document.querySelector('.demo-placeholder');
+            if (demoArea && demoArea.querySelector('.landing-state')) {
+                demoArea.innerHTML = `
+                    <div class="landing-state">
+                        <h3>🎉 Connected to Strava!</h3>
+                        <p>Import activities from Strava or upload GPX files to get started.</p>
+                        <div class="landing-actions">
+                            <button class="btn btn-primary" onclick="window.stravaAuth.fetchActivities()">
+                                📊 Browse Strava Activities
+                            </button>
+                            <button class="btn btn-secondary" onclick="window.fileUploader?.showFileUploadUI()">
+                                � Upload GPX Files
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+    }
+    
+    // Add Strava import button to the upload actions section
+    addStravaImportButton() {
+        const uploadActions = document.getElementById('upload-actions');
+        if (uploadActions && !document.getElementById('strava-import-btn')) {
+            const stravaBtn = document.createElement('button');
+            stravaBtn.id = 'strava-import-btn';
+            stravaBtn.className = 'btn btn-primary';
+            stravaBtn.onclick = () => this.fetchActivities();
+            stravaBtn.innerHTML = '📊 Import from Strava';
+            
+            // Insert after "Upload More" button
+            const uploadMoreBtn = document.getElementById('upload-more-btn');
+            if (uploadMoreBtn && uploadMoreBtn.parentNode) {
+                uploadMoreBtn.parentNode.insertBefore(stravaBtn, uploadMoreBtn.nextSibling);
+            }
         }
     }
 
@@ -249,31 +273,78 @@ class StravaAuth {
 
     // Show activities list in UI
     showActivitiesList(activities) {
-        const demoArea = document.querySelector('.demo-placeholder');
-        if (demoArea) {
-            const activitiesHTML = activities.map(activity => `
-                <div class="activity-item" style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px;">
-                    <strong>${activity.name}</strong>
-                    <br>
-                    <small>${activity.type} • ${(activity.distance / 1000).toFixed(1)}km • ${activity.start_date_local}</small>
-                    <br>
-                    <button class="btn btn-sm btn-primary" onclick="window.stravaAuth.importActivity('${activity.id}')">
-                        📥 Import
-                    </button>
-                </div>
-            `).join('');
+        // Create or update the Strava activities modal
+        let modal = document.getElementById('strava-activities-modal');
+        if (!modal) {
+            modal = this.createStravaActivitiesModal();
+        }
+        
+        const activitiesHTML = activities.map(activity => `
+            <div class="activity-item" style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px; background: white;">
+                <strong>${activity.name}</strong>
+                <br>
+                <small>${activity.type} • ${(activity.distance / 1000).toFixed(1)}km • ${activity.start_date_local}</small>
+                <br>
+                <button class="btn btn-sm btn-primary" onclick="window.stravaAuth.importActivity('${activity.id}')" style="margin-top: 5px;">
+                    📥 Import
+                </button>
+            </div>
+        `).join('');
 
-            demoArea.innerHTML = `
+        const modalContent = modal.querySelector('.strava-modal-content');
+        if (modalContent) {
+            modalContent.innerHTML = `
                 <h3>📊 Recent Strava Activities</h3>
-                <div class="activities-list" style="max-height: 400px; overflow-y: auto;">
+                <div class="activities-list" style="max-height: 400px; overflow-y: auto; margin: 15px 0;">
                     ${activitiesHTML}
                 </div>
-                <div class="activities-actions">
-                    <button class="btn btn-secondary" onclick="window.stravaAuth.showAuthenticatedFeatures()">
-                        ← Back to Dashboard
+            `;
+        }
+        
+        // Show the modal
+        modal.style.display = 'flex';
+    }
+    
+    // Create the Strava activities modal
+    createStravaActivitiesModal() {
+        const modal = document.createElement('div');
+        modal.id = 'strava-activities-modal';
+        modal.className = 'privacy-modal-overlay';
+        modal.style.display = 'none';
+        
+        modal.innerHTML = `
+            <div class="privacy-modal" style="max-width: 600px;">
+                <div class="privacy-modal-header">
+                    <h2>📊 Strava Activities</h2>
+                    <button class="modal-close" onclick="window.stravaAuth.closeActivitiesModal()">×</button>
+                </div>
+                <div class="strava-modal-content privacy-modal-content">
+                    <!-- Content will be inserted here -->
+                </div>
+                <div class="privacy-modal-actions">
+                    <button class="btn btn-secondary" onclick="window.stravaAuth.closeActivitiesModal()">
+                        Close
                     </button>
                 </div>
-            `;
+            </div>
+        `;
+        
+        // Close when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeActivitiesModal();
+            }
+        });
+        
+        document.body.appendChild(modal);
+        return modal;
+    }
+    
+    // Close the Strava activities modal
+    closeActivitiesModal() {
+        const modal = document.getElementById('strava-activities-modal');
+        if (modal) {
+            modal.style.display = 'none';
         }
     }
 
@@ -299,7 +370,12 @@ class StravaAuth {
                 await window.fileUploader.saveRoutesToStorage();
                 
                 console.log('✅ Activity imported and saved successfully');
-                alert(`Successfully imported: ${route.name}`);
+                
+                // Close the modal if open
+                this.closeActivitiesModal();
+                
+                // Show success notification (less intrusive than alert)
+                this.showNotification(`✅ Imported: ${route.name}`, 'success');
             } else {
                 console.error('❌ File uploader not available');
                 alert('Error: File uploader not available');
@@ -379,6 +455,34 @@ class StravaAuth {
     clearLocalAuthState() {
         localStorage.removeItem('rcm_was_authenticated');
         localStorage.removeItem('rcm_athlete_info');
+    }
+    
+    // Show a temporary notification
+    showNotification(message, type = 'info') {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.textContent = message;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            background: ${type === 'success' ? '#4CAF50' : type === 'error' ? '#f44336' : '#2196F3'};
+            color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 10000;
+            animation: slideIn 0.3s ease-out;
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Remove after 3 seconds
+        setTimeout(() => {
+            notification.style.animation = 'slideOut 0.3s ease-out';
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
     }
 }
 
