@@ -3,7 +3,6 @@ import GPXParser from '../data/gpx-parser.js';
 import RouteMapVisualization from '../visualization/route-map.js';
 import Route3DVisualization from '../visualization/route-3d.js';
 import RouteStorageManager from '../data/route-storage.js';
-import RouteLocalStorageManager from '../data/route-storage-local.js';
 import RouteManipulator from '../data/route-manipulator.js';
 
 class FileUploadHandler {
@@ -406,15 +405,9 @@ class FileUploadHandler {
                 console.warn('⚠️ IndexedDB not supported, falling back to localStorage');
             }
 
-            // Fallback to localStorage
-            if (RouteLocalStorageManager.isSupported()) {
-                this.storageManager = new RouteLocalStorageManager();
-                await this.storageManager.init();
-                console.log('✅ Using localStorage storage (limited capacity)');
-            } else {
-                console.error('❌ No storage options available');
-                this.storageManager = null;
-            }
+            // Only IndexedDB is supported
+            console.error('❌ No storage options available');
+            this.storageManager = null;
             
         } catch (error) {
             console.error('❌ Storage initialization failed completely:', error);
@@ -1852,8 +1845,6 @@ class FileUploadHandler {
             const storageType = this.storageManager.constructor.name;
             if (storageType === 'RouteStorageManager') {
                 console.log('✅ Using IndexedDB storage (high capacity)');
-            } else if (storageType === 'RouteLocalStorageManager') {
-                console.log('⚠️ Using localStorage storage (limited capacity)');
             } else {
                 console.log('🔧 Using custom storage manager:', storageType);
             }

@@ -318,8 +318,8 @@ class StravaAuth {
         const points = latlng.data.map((coord, index) => ({
             lat: coord[0],
             lon: coord[1],
-            elevation: altitude && altitude.data ? altitude.data[index] || 0 : 0,
-            timestamp: time && time.data ? new Date(activity.start_date).getTime() + (time.data[index] * 1000) : null
+            elevation: altitude?.data ? altitude.data[index] || 0 : 0,
+            timestamp: time?.data ? new Date(activity.start_date).getTime() + (time.data[index] * 1000) : null
         }));
 
         return {
