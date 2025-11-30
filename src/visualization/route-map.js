@@ -8,6 +8,7 @@ class RouteMapVisualization {
         this.routeLayers = [];
         this.markerLayers = [];
         this.currentBounds = null;
+        this.resizeObserver = null;
         this.colors = [
             '#2563eb', '#dc2626', '#059669', '#d97706', 
             '#7c3aed', '#db2777', '#0891b2', '#65a30d'
@@ -21,6 +22,12 @@ class RouteMapVisualization {
             // Clear any existing map
             if (this.map) {
                 this.map.remove();
+            }
+            
+            // Disconnect any existing ResizeObserver
+            if (this.resizeObserver) {
+                this.resizeObserver.disconnect();
+                this.resizeObserver = null;
             }
 
             // Create map instance
@@ -44,12 +51,39 @@ class RouteMapVisualization {
             // Set default view (will be updated when routes are added)
             this.map.setView([40.7128, -74.0060], 10); // Default to NYC
 
+            // Use Leaflet's whenReady to ensure map is fully initialized before invalidating size
+            this.map.whenReady(() => {
+                this.map.invalidateSize();
+                console.log('🗺️ Map ready and size validated');
+            });
+            
+            // Set up ResizeObserver to watch for container size changes
+            this.setupResizeObserver(containerElement);
+
             console.log('🗺️ Map initialized successfully');
             return true;
         } catch (error) {
             console.error('❌ Failed to initialize map:', error);
             return false;
         }
+    }
+    
+    // Set up ResizeObserver to handle container size changes
+    setupResizeObserver(containerElement) {
+        // Create ResizeObserver to watch for container size changes
+        this.resizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                // Only invalidate if map exists and container has actual dimensions
+                if (this.map && entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+                    console.log('📐 Map container resized, invalidating size');
+                    this.map.invalidateSize();
+                }
+            }
+        });
+        
+        // Start observing the container
+        this.resizeObserver.observe(containerElement);
+        console.log('👀 ResizeObserver watching map container');
     }
 
     // Add a single route to the map
@@ -75,7 +109,8 @@ class RouteMapVisualization {
         try {
             // Convert GPS points to Leaflet LatLng format
             const latLngs = routeData.points
-                .filter(point => point.lat && point.lon) // Filter out invalid points
+                // Filter out invalid points
+                .filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lon))
                 .map(point => [point.lat, point.lon]);
 
             if (latLngs.length === 0) {
@@ -221,11 +256,16 @@ class RouteMapVisualization {
         if (this.routeLayers.length === 0) return;
 
         try {
-            // Force Leaflet to recalculate map size (fixes tile loading issues)
-            if (this.map) {
-                this.map.invalidateSize();
+            // Check if map container is visible in DOM
+            const container = this.map?.getContainer();
+            if (container?.offsetParent == null) {
+                console.log('🗺️ Map container not visible, skipping fitBounds');
+                return;
             }
-            
+
+            // Force Leaflet to recalculate map size (fixes tile loading issues)
+            this.map?.invalidateSize();
+
             // Collect all route bounds
             const allLatLngs = [];
             this.routeLayers.forEach(layer => {
@@ -318,10 +358,18 @@ class RouteMapVisualization {
 
     // Destroy map instance
     destroy() {
+        // Disconnect ResizeObserver
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
+        }
+        
+        // Remove map
         if (this.map) {
             this.map.remove();
             this.map = null;
         }
+        
         this.routeLayers = [];
         this.markerLayers = [];
     }
