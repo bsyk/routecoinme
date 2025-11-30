@@ -40004,6 +40004,13 @@
   ],
   "metadata": {
     "name": "Semi Circle",
-    "creator": "https://routecoin.me/"
+    "creator": "https://routecoin.me/",
+    "normalization": {
+      "anchor": {
+        "type": "end",
+        "targetLat": 0,
+        "targetLon": 0
+      }
+    }
   }
 }

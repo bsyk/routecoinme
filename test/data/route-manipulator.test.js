@@ -77,8 +77,29 @@ describe('RouteManipulator', () => {
             const route = createTestRoute();
             const normalized = manipulator.normalizeRoute(route);
 
-            // First point should be at latitude 0
-            expect(normalized.points[0].lat).toBe(0);
+            // First point should be at the negative of the average latitude range
+            // Latitudes are 0.0 to 0.03, average is 0.015
+            expect(normalized.points[0].lat).toBe(-0.015);
+            expect(normalized.points[0].lon).toBe(-0.015);
+            expect(normalized.points[0].elevation).toBe(0);
+        });
+
+        it('should center route on (0, 0) if offset', () => {
+            const route = createTestRoute({
+                points: [
+                    { lat: 100.0, lon: 50.0, elevation: 200 }, // Starts higher than it ends
+                    { lat: 200.0, lon: 100.0, elevation: 100 }
+                ]
+            });
+            const normalized = manipulator.normalizeRoute(route);
+
+            // First point should be at the negative of the average latitude range
+            // Latitudes are 100.0 to 200.0, average is 150.0 minus 100 = 50.0
+            // Longitudes are 50.0 to 100.0, average is 75.0 minus 50 = 25.0
+            // Elevation starts at 200, so first point elevation should be 200-100 = 100
+            expect(normalized.points[0].lat).toBe(-50.0);
+            expect(normalized.points[0].lon).toBe(-25.0);
+            expect(normalized.points[0].elevation).toBe(100);
         });
 
         it('should preserve route shape', () => {
@@ -116,6 +137,74 @@ describe('RouteManipulator', () => {
             expect(() => {
                 manipulator.normalizeRoute(route);
             }).toThrow('Route must have points to normalize');
+        });
+
+        it('should anchor end point to provided target coordinate', () => {
+            const route = createTestRoute({
+                points: [
+                    { lat: 1.0, lon: 1.0, elevation: 100 },
+                    { lat: 1.01, lon: 1.02, elevation: 200 }
+                ]
+            });
+
+            const normalized = manipulator.normalizeRoute(route, {
+                anchor: { type: 'end', targetLat: 0, targetLon: 0 }
+            });
+
+            const lastPoint = normalized.points.at(-1);
+            expect(lastPoint.lat).toBeCloseTo(0, 6);
+            expect(lastPoint.lon).toBeCloseTo(0, 6);
+        });
+
+        it('should anchor start point to provided target coordinate', () => {
+            const route = createTestRoute({
+                points: [
+                    { lat: 1.0, lon: 1.0, elevation: 100 },
+                    { lat: 1.01, lon: 1.02, elevation: 200 }
+                ]
+            });
+
+            const normalized = manipulator.normalizeRoute(route, {
+                anchor: { type: 'start', targetLat: 0, targetLon: 0 }
+            });
+
+            const firstPoint = normalized.points.at(0);
+            expect(firstPoint.lat).toBeCloseTo(0, 6);
+            expect(firstPoint.lon).toBeCloseTo(0, 6);
+        });
+
+        it('should anchor start point to provided target coordinate', () => {
+            const route = createTestRoute({
+                points: [
+                    { lat: 1.0, lon: 1.0, elevation: 100 },
+                    { lat: 1.01, lon: 1.02, elevation: 200 }
+                ]
+            });
+
+            const normalized = manipulator.normalizeRoute(route, {
+                anchor: { type: 'start', targetLatOffset: 2, targetLonOffset: 6 }
+            });
+
+            const firstPoint = normalized.points.at(0);
+            expect(firstPoint.lat).toBeCloseTo(2, 6);
+            expect(firstPoint.lon).toBeCloseTo(6, 6);
+        });
+
+        it('should read anchor configuration from metadata when present', () => {
+            const route = createTestRoute({
+                metadata: {
+                    normalization: {
+                        anchor: { type: 'end', targetLat: 0, targetLon: 0 }
+                    }
+                }
+            });
+
+            const normalized = manipulator.normalizeRoute(route);
+
+            const lastPoint = normalized.points.at(-1);
+            expect(lastPoint.lat).toBeCloseTo(0, 6);
+            expect(lastPoint.lon).toBeCloseTo(0, 6);
+            expect(normalized.metadata.normalization.anchor).toBeDefined();
         });
     });
 
