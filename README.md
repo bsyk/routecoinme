@@ -2,6 +2,8 @@
 
 GPS route aggregation and 3D visualization web application.
 
+> ℹ️ This project was created end-to-end using GitHub Copilot.
+
 ## Development
 
 ### Environment Setup

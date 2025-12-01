@@ -48,7 +48,7 @@
                             <li>Strava imports are streamed directly to your browser without being saved on our servers</li>
                             <li>Only you have access to your stored routes</li>
                             <li>Clearing your browser data will remove stored routes</li>
-                            <li>No cloud synchronization or backup unless you explicitly choose it</li>
+                            <li>No built-in cloud synchronization or backup—your routes stay in your browser unless you export them manually</li>
                         </ul>
                     </section>
 
@@ -68,8 +68,8 @@
                         <p>If you choose to connect with Strava (completely optional):</p>
                         <ul>
                             <li>You explicitly authorize the connection through Strava's official OAuth</li>
-                            <li>Only route data you specifically select is shared</li>
-                            <li>Our cloud importer briefly processes the selected activity to pass it to your device and then discards it</li>
+                            <li>Only the Strava activities you explicitly import are fetched; we convert them to RouteCoinMe's lightweight route format and discard the original Strava payload immediately</li>
+                            <li>The converted route is streamed to your browser for local use and is never stored or forwarded elsewhere</li>
                             <li>You can disconnect at any time</li>
                             <li>Strava's privacy policy applies to data shared with their service</li>
                             <li>Local processing remains the default for all operations</li>
