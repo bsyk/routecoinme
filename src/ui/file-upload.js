@@ -35,6 +35,8 @@ class FileUploadHandler {
         this.previousAggregationOptions = null;
         this.lastRouteSelectionBeforeCoin = null;
         this.suppressOptionEvents = false;
+        this.pendingRouteScrollId = null;
+        this.pendingCoinScrollId = null;
         
         // State management system
         this.stateListeners = new Set();
@@ -683,6 +685,17 @@ class FileUploadHandler {
             if (!isFictional) {
                 timeRadio.checked = false;
             }
+
+            if (timeRadioLabel) {
+                const tooltip = controlsLocked
+                    ? 'Viewing a saved coin. Switch back to Routes to change distribution.'
+                    : 'Select a fictional overlay to unlock time distribution.';
+                if (shouldDisableTime) {
+                    timeRadioLabel.setAttribute('title', tooltip);
+                } else {
+                    timeRadioLabel.removeAttribute('title');
+                }
+            }
         }
 
         if (timeRadioLabel) {
@@ -704,11 +717,25 @@ class FileUploadHandler {
         const overlaySelect = document.getElementById('overlay-select');
         if (overlaySelect) {
             overlaySelect.disabled = controlsLocked;
+            if (controlsLocked) {
+                overlaySelect.setAttribute('title', 'Viewing a saved coin. Switch back to Routes to choose a new overlay.');
+            } else {
+                overlaySelect.removeAttribute('title');
+            }
         }
 
         const elevationRadios = document.querySelectorAll('input[name="elevation-mode"]');
         elevationRadios.forEach(radio => {
             radio.disabled = controlsLocked;
+            const label = radio.closest('.radio-option');
+            if (label) {
+                label.classList.toggle('radio-option-disabled', controlsLocked);
+                if (controlsLocked) {
+                    label.setAttribute('title', 'Viewing a saved coin. Switch back to Routes to change elevation mode.');
+                } else {
+                    label.removeAttribute('title');
+                }
+            }
         });
 
         const domainRadios = document.querySelectorAll('input[name="aggregation-domain"]');
@@ -718,6 +745,29 @@ class FileUploadHandler {
                 radio.disabled = controlsLocked || !overlayIsFictional;
             } else {
                 radio.disabled = controlsLocked;
+            }
+
+            const label = radio.closest('.radio-option');
+            if (label) {
+                const disabled = radio.disabled;
+                label.classList.toggle('radio-option-disabled', disabled);
+
+                if (disabled) {
+                    let tooltip;
+                    if (controlsLocked) {
+                        tooltip = 'Viewing a saved coin. Switch back to Routes to change distribution.';
+                    } else if (radio.value === 'time' && !overlayIsFictional) {
+                        tooltip = 'Select a fictional overlay to unlock time distribution.';
+                    }
+
+                    if (tooltip) {
+                        label.setAttribute('title', tooltip);
+                    } else {
+                        label.removeAttribute('title');
+                    }
+                } else {
+                    label.removeAttribute('title');
+                }
             }
         });
     }
@@ -1373,6 +1423,24 @@ class FileUploadHandler {
         return { startTime, endTime, timeStepMs, stepLabel, totalTimespan };
     }
 
+    scrollListItemIntoView(containerId, selector) {
+        const container = document.getElementById(containerId);
+        if (!container) {
+            return;
+        }
+
+        const target = container.querySelector(selector);
+        if (!target) {
+            return;
+        }
+
+        try {
+            target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        } catch (error) {
+            console.warn('⚠️ Failed to scroll list item into view:', error);
+        }
+    }
+
     async buildAggregatedRoute(routes, options) {
         const sortedRoutes = [...routes];
         if (sortedRoutes.length === 0) {
@@ -1505,6 +1573,7 @@ class FileUploadHandler {
         }
 
         this.savedCoins.unshift(coinRecord);
+        this.pendingCoinScrollId = coinRecord.id;
         this.updateCoinList();
 
         if (typeof this.activateListTab === 'function') {
@@ -1554,6 +1623,8 @@ class FileUploadHandler {
 
             if (this.lastRouteSelectionBeforeCoin) {
                 this.selectedRoutes = new Set(this.lastRouteSelectionBeforeCoin);
+                const firstRoute = this.selectedRoutes.values().next().value;
+                this.pendingRouteScrollId = firstRoute ?? null;
             }
 
             this.previousAggregationOptions = null;
@@ -2185,6 +2256,11 @@ class FileUploadHandler {
         }).join('');
 
         routeListContainer.innerHTML = routeItems;
+
+        if (this.pendingRouteScrollId) {
+            this.scrollListItemIntoView('route-list', `[data-route-id="${this.pendingRouteScrollId}"]`);
+            this.pendingRouteScrollId = null;
+        }
     }
 
     updateCoinList() {
@@ -2198,6 +2274,8 @@ class FileUploadHandler {
             return;
         }
 
+        const highlightCoinId = this.pendingCoinScrollId;
+
         const listHtml = this.savedCoins.map(coin => {
             const distanceValue = coin.stats?.distance ?? coin.route?.distance ?? 0;
             const elevationValue = coin.stats?.elevationGain ?? coin.route?.elevationGain ?? 0;
@@ -2210,6 +2288,9 @@ class FileUploadHandler {
             const classes = ['coin-list-item'];
             if (isActive) {
                 classes.push('active');
+            }
+            if (highlightCoinId && coin.id === highlightCoinId) {
+                classes.push('coin-list-item-highlight');
             }
 
             const rawName = coin.name || 'Untitled Coin';
@@ -2237,6 +2318,12 @@ class FileUploadHandler {
         }).join('');
 
         coinListContainer.innerHTML = listHtml;
+
+        const coinIdToScroll = this.pendingCoinScrollId || this.activeCoin?.id;
+        if (coinIdToScroll) {
+            this.scrollListItemIntoView('coin-list', `[data-coin-id="${coinIdToScroll}"]`);
+        }
+        this.pendingCoinScrollId = null;
     }
 
     async selectSavedCoin(coinId) {
@@ -2254,6 +2341,8 @@ class FileUploadHandler {
         if (typeof this.activateListTab === 'function') {
             this.activateListTab('coins');
         }
+
+        this.pendingCoinScrollId = coinId;
 
         if (!this.activeCoin) {
             this.previousAggregationOptions = { ...this.aggregationOptions };
@@ -2545,6 +2634,8 @@ class FileUploadHandler {
         } else {
             this.selectedRoutes.delete(routeId);
         }
+
+        this.pendingRouteScrollId = routeId;
 
         this.notifyStateChange('selected-routes-changed', {
             reason: 'visibility-toggled',

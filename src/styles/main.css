@@ -1096,6 +1096,14 @@ body {
     opacity: 1;
 }
 
+.coin-list-item-highlight {
+    animation: coinItemGlow 1.4s ease-in-out;
+}
+
+.coin-action-btn-highlight {
+    animation: coinActionFlash 1.5s ease-in-out;
+}
+
 .coin-action-btn {
     background: none;
     border: none;
@@ -1105,11 +1113,36 @@ body {
     color: var(--text-secondary);
     font-size: 0.75rem;
     transition: all 0.2s ease;
+    position: relative;
 }
 
 .coin-action-btn:hover {
     background: var(--surface);
     color: var(--text-primary);
+}
+
+@keyframes coinActionFlash {
+    0% {
+        box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.35);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(249, 115, 22, 0.15);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+    }
+}
+
+@keyframes coinItemGlow {
+    0% {
+        box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.12);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(249, 115, 22, 0.08);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+    }
 }
 
 /* Leaflet Popup Customizations */
