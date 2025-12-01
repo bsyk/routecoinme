@@ -4,8 +4,9 @@
 class RouteStorageManager {
     constructor() {
         this.dbName = 'RouteCoinMeDB';
-        this.dbVersion = 1;
+        this.dbVersion = 2;
         this.routeStoreName = 'routes';
+        this.coinStoreName = 'coins';
         this.db = null;
     }
 
@@ -31,24 +32,154 @@ class RouteStorageManager {
                 request.onupgradeneeded = (event) => {
                     console.log('🔄 Setting up IndexedDB schema...');
                     const db = event.target.result;
+                    const oldVersion = event.oldVersion || 0;
 
-                    // Create routes object store
-                    if (!db.objectStoreNames.contains(this.routeStoreName)) {
-                        const routeStore = db.createObjectStore(this.routeStoreName, { 
-                            keyPath: 'id' 
+                    // Create routes object store (version 1)
+                    if (oldVersion < 1 && !db.objectStoreNames.contains(this.routeStoreName)) {
+                        const routeStore = db.createObjectStore(this.routeStoreName, {
+                            keyPath: 'id'
                         });
 
-                        // Create indices for efficient querying
                         routeStore.createIndex('filename', 'filename', { unique: false });
                         routeStore.createIndex('uploadTime', 'uploadTime', { unique: false });
                         routeStore.createIndex('distance', 'distance', { unique: false });
 
                         console.log('📊 Created routes object store with indices');
                     }
+
+                    // Create saved coins store (version 2)
+                    if (oldVersion < 2 && !db.objectStoreNames.contains(this.coinStoreName)) {
+                        const coinStore = db.createObjectStore(this.coinStoreName, {
+                            keyPath: 'id'
+                        });
+
+                        coinStore.createIndex('name', 'name', { unique: false });
+                        coinStore.createIndex('createdAt', 'createdAt', { unique: false });
+
+                        console.log('🪙 Created coins object store with indices');
+                    }
                 };
             });
         } catch (error) {
             console.error('❌ IndexedDB initialization failed:', error);
+            throw error;
+        }
+    }
+
+    // Save a coin (aggregated route)
+    async saveCoin(coin) {
+        if (!this.db) {
+            await this.init();
+        }
+
+        const coinRecord = {
+            ...coin,
+            type: 'coin'
+        };
+
+        try {
+            return new Promise((resolve, reject) => {
+                const transaction = this.db.transaction([this.coinStoreName], 'readwrite');
+                const store = transaction.objectStore(this.coinStoreName);
+                const request = store.put(coinRecord);
+
+                request.onsuccess = () => {
+                    console.log(`💰 Coin saved to IndexedDB: ${coinRecord.name}`);
+                    resolve(request.result);
+                };
+
+                request.onerror = () => {
+                    console.error('❌ Failed to save coin:', request.error);
+                    reject(request.error);
+                };
+            });
+        } catch (error) {
+            console.error('❌ Error saving coin to IndexedDB:', error);
+            throw error;
+        }
+    }
+
+    // Load all saved coins
+    async loadCoins() {
+        if (!this.db) {
+            await this.init();
+        }
+
+        try {
+            return new Promise((resolve, reject) => {
+                const transaction = this.db.transaction([this.coinStoreName], 'readonly');
+                const store = transaction.objectStore(this.coinStoreName);
+                const request = store.getAll();
+
+                request.onsuccess = () => {
+                    const coins = request.result || [];
+                    console.log(`🪙 Loaded ${coins.length} coins from IndexedDB`);
+                    resolve(coins);
+                };
+
+                request.onerror = () => {
+                    console.error('❌ Failed to load coins:', request.error);
+                    reject(request.error);
+                };
+            });
+        } catch (error) {
+            console.error('❌ Error loading coins from IndexedDB:', error);
+            throw error;
+        }
+    }
+
+    // Delete a saved coin
+    async deleteCoin(coinId) {
+        if (!this.db) {
+            await this.init();
+        }
+
+        try {
+            return new Promise((resolve, reject) => {
+                const transaction = this.db.transaction([this.coinStoreName], 'readwrite');
+                const store = transaction.objectStore(this.coinStoreName);
+                const request = store.delete(coinId);
+
+                request.onsuccess = () => {
+                    console.log(`🗑️ Coin deleted from IndexedDB: ${coinId}`);
+                    resolve();
+                };
+
+                request.onerror = () => {
+                    console.error('❌ Failed to delete coin:', request.error);
+                    reject(request.error);
+                };
+            });
+        } catch (error) {
+            console.error('❌ Error deleting coin from IndexedDB:', error);
+            throw error;
+        }
+    }
+
+    // Clear all saved coins
+    async clearAllCoins() {
+        if (!this.db) {
+            await this.init();
+        }
+
+        try {
+            return new Promise((resolve, reject) => {
+                const transaction = this.db.transaction([this.coinStoreName], 'readwrite');
+                const store = transaction.objectStore(this.coinStoreName);
+                const request = store.clear();
+
+                request.onsuccess = () => {
+                    console.log('🧹 All coins cleared from IndexedDB');
+                    resolve();
+                };
+
+                request.onerror = () => {
+                    console.error('❌ Failed to clear coins:', request.error);
+                    reject(request.error);
+                };
+            });
+        } catch (error) {
+            console.error('❌ Error clearing coins from IndexedDB:', error);
             throw error;
         }
     }

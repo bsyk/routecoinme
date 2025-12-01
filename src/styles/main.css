@@ -1039,6 +1039,79 @@ body {
     color: var(--text-primary);
 }
 
+.coin-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.coin-list-item:last-child {
+    border-bottom: none;
+}
+
+.coin-list-item:hover {
+    background: var(--surface);
+}
+
+.coin-list-item.active {
+    background: rgba(249, 115, 22, 0.12);
+    border-left: 3px solid #f97316;
+}
+
+.coin-item-main h4 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin: 0 0 0.35rem 0;
+    color: var(--text-primary);
+}
+
+.coin-item-meta {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 0.35rem;
+}
+
+.coin-item-stats {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 1rem;
+}
+
+.coin-item-actions {
+    display: flex;
+    gap: 0.5rem;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.coin-list-item:hover .coin-item-actions,
+.coin-list-item.active .coin-item-actions {
+    opacity: 1;
+}
+
+.coin-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    transition: all 0.2s ease;
+}
+
+.coin-action-btn:hover {
+    background: var(--surface);
+    color: var(--text-primary);
+}
+
 /* Leaflet Popup Customizations */
 .leaflet-popup-content-wrapper {
     border-radius: var(--border-radius);
