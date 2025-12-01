@@ -602,10 +602,10 @@ class Route3DVisualization {
         const sizeZ = this.boundingBox.maxZ - this.boundingBox.minZ;
         const sizeY = this.boundingBox.maxY - this.boundingBox.minY;
 
-        const maxSize = Math.max(sizeX, sizeZ, 1000); // Minimum size for small routes
+        const maxSize = Math.max(sizeX, sizeZ, 1); // Minimum size for small routes
         
         // Use the preferred viewing angle proportions but scale based on route size
-        const actualDistance = Math.min(Math.max(maxSize * 1.2, preferredPosition.z * 0.5), preferredPosition.z * 2.5); // Cap maximum distance
+        const actualDistance = Math.min(maxSize * 1.2, preferredPosition.z * 2.5); // Cap maximum distance
 
         // Maintain the same proportional viewing angle as the preferred position
         const distanceRatio = actualDistance / preferredPosition.z;
