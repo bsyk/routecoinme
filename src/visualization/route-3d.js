@@ -308,8 +308,10 @@ class Route3DVisualization {
     // Setup basic mouse controls
     setupControls() {
         let isMouseDown = false;
+        let isTouchActive = false;
         let mouseX = 0;
         let mouseY = 0;
+        let touchDistance = 0;
         
         // Initialize rotation to match preferred camera position (9066.7, 16001.4, 38808.7)
         const preferredPos = { x: 9066.7, y: 16001.4, z: 38808.7 };
@@ -324,6 +326,7 @@ class Route3DVisualization {
         console.log(`🎮 Controls initialized with rotations: X=${(targetRotationX * 180 / Math.PI).toFixed(1)}°, Y=${(targetRotationY * 180 / Math.PI).toFixed(1)}°`);
 
         const canvas = this.renderer.domElement;
+        canvas.style.touchAction = 'none';
 
         canvas.addEventListener('mousedown', (event) => {
             isMouseDown = true;
@@ -361,6 +364,52 @@ class Route3DVisualization {
             } else {
                 this.camera.position.multiplyScalar(1 / scaleFactor);
             }
+        }, { passive: false });
+
+        canvas.addEventListener('touchstart', (event) => {
+            if (event.touches.length === 1) {
+                isTouchActive = true;
+                mouseX = event.touches[0].clientX;
+                mouseY = event.touches[0].clientY;
+            } else if (event.touches.length === 2) {
+                isTouchActive = false;
+                touchDistance = this._getTouchDistance(event);
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (event) => {
+            event.preventDefault();
+            if (event.touches.length === 1 && isTouchActive) {
+                const deltaX = event.touches[0].clientX - mouseX;
+                const deltaY = event.touches[0].clientY - mouseY;
+
+                targetRotationY += deltaX * 0.01;
+                targetRotationX += deltaY * 0.01;
+
+                targetRotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, targetRotationX));
+
+                mouseX = event.touches[0].clientX;
+                mouseY = event.touches[0].clientY;
+            } else if (event.touches.length === 2) {
+                const currentDistance = this._getTouchDistance(event);
+                if (touchDistance) {
+                    const scaleFactor = 1 + (touchDistance - currentDistance) / 200;
+                    this.camera.position.multiplyScalar(scaleFactor);
+                }
+                touchDistance = currentDistance;
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            if (isTouchActive) {
+                isTouchActive = false;
+            }
+            touchDistance = 0;
+        });
+
+        canvas.addEventListener('touchcancel', () => {
+            isTouchActive = false;
+            touchDistance = 0;
         });
 
         canvas.style.cursor = 'grab';
@@ -387,6 +436,17 @@ class Route3DVisualization {
                 this.lastLoggedPos = { ...currentPos };
             }
         };
+    }
+
+    // Helper to determine pinch distance between two touch points
+    _getTouchDistance(event) {
+        if (event.touches.length < 2) {
+            return 0;
+        }
+        const [touch1, touch2] = event.touches;
+        const deltaX = touch1.clientX - touch2.clientX;
+        const deltaY = touch1.clientY - touch2.clientY;
+        return Math.hypot(deltaX, deltaY);
     }
 
         // Add a route to the 3D visualization
