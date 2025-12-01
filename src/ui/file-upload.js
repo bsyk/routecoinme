@@ -23,6 +23,15 @@ class FileUploadHandler {
         this.is3DInitialized = false; // Track if 3D viewer has been initialized
         this.activeListTab = 'routes'; // 'routes' or 'coins'
         this.activateListTab = null;
+        this.savedCoins = [];
+        this.activeCoin = null; // Currently displayed saved coin
+        this.aggregationOptions = {
+            elevationMode: 'actual',
+            overlay: 'real',
+            domain: 'distance'
+        };
+        this.isAggregating = false;
+        this.pendingAggregation = null;
         
         // State management system
         this.stateListeners = new Set();
@@ -38,6 +47,7 @@ class FileUploadHandler {
         this.setupDropZone();
         this.setupViewToggleButtons();
         this.setupListTabs();
+        this.setupSidebarControls();
         await this.initializeStorage();
         
         // Set up centralized state listener
@@ -275,6 +285,13 @@ class FileUploadHandler {
         // Update UI elements
         this.updateRouteList();
         this.updateStatsDisplay();
+        this.updateCoinActionButtons();
+
+        if (!this.activeCoin) {
+            this.refreshAggregatedRoute({ reason: 'selection-change' }).catch(error => {
+                console.error('❌ Failed to refresh aggregated route after selection change:', error);
+            });
+        }
     }
 
     // Helper: Clear all routes from all visualizations
@@ -579,6 +596,118 @@ class FileUploadHandler {
 
             console.log('📋 Route/Coin list tabs initialized');
         }, 100);
+    }
+
+    setupSidebarControls() {
+        setTimeout(() => {
+            const elevationRadios = document.querySelectorAll('input[name="elevation-mode"]');
+            elevationRadios.forEach(radio => {
+                radio.addEventListener('change', (event) => {
+                    if (event.target.checked) {
+                        this.aggregationOptions.elevationMode = event.target.value;
+                        this.onAggregationOptionsChanged('elevation-mode');
+                    }
+                });
+            });
+
+            const overlaySelect = document.getElementById('overlay-select');
+            if (overlaySelect) {
+                overlaySelect.value = this.aggregationOptions.overlay;
+                overlaySelect.addEventListener('change', (event) => {
+                    this.aggregationOptions.overlay = event.target.value;
+                    this.updateDomainControlState();
+                    this.onAggregationOptionsChanged('overlay');
+                });
+            }
+
+            const domainRadios = document.querySelectorAll('input[name="aggregation-domain"]');
+            domainRadios.forEach(radio => {
+                radio.addEventListener('change', (event) => {
+                    if (event.target.checked) {
+                        this.aggregationOptions.domain = event.target.value;
+                        this.onAggregationOptionsChanged('aggregation-domain');
+                    }
+                });
+            });
+
+            const saveBtn = document.getElementById('save-coin-btn');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', () => this.handleSaveCoinClick());
+            }
+
+            const downloadBtn = document.getElementById('download-coin-btn');
+            if (downloadBtn) {
+                downloadBtn.addEventListener('click', () => this.handleDownloadCoinClick());
+            }
+
+            const clearBtn = document.getElementById('clear-coin-btn');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => this.handleClearCoinClick());
+            }
+
+            this.updateDomainControlState();
+            this.updateCoinActionButtons();
+        }, 100);
+    }
+
+    updateDomainControlState() {
+        const overlayValue = this.aggregationOptions.overlay;
+        const isFictional = overlayValue && overlayValue !== 'real';
+        const timeRadio = document.getElementById('domain-time');
+        const distanceRadio = document.getElementById('domain-distance');
+        const timeRadioLabel = timeRadio?.closest('.radio-option');
+
+        if (timeRadio) {
+            timeRadio.disabled = !isFictional;
+            if (!isFictional) {
+                timeRadio.checked = false;
+            }
+        }
+
+        if (timeRadioLabel) {
+            timeRadioLabel.classList.toggle('radio-option-disabled', !isFictional);
+        }
+
+        if (!isFictional) {
+            this.aggregationOptions.domain = 'distance';
+            if (distanceRadio) {
+                distanceRadio.checked = true;
+            }
+        }
+    }
+
+    updateCoinActionButtons() {
+        const hasSelectedRoutes = this.selectedRoutes.size > 0;
+        const hasAggregatedRoute = Boolean(this.aggregatedRoute) || Boolean(this.activeCoin);
+        const viewCoinBtn = document.getElementById('view-coin-btn');
+        const saveBtn = document.getElementById('save-coin-btn');
+        const downloadBtn = document.getElementById('download-coin-btn');
+        const clearBtn = document.getElementById('clear-coin-btn');
+
+        if (viewCoinBtn) {
+            viewCoinBtn.disabled = !hasSelectedRoutes && !hasAggregatedRoute;
+        }
+
+        if (saveBtn) {
+            saveBtn.disabled = !this.aggregatedRoute || Boolean(this.activeCoin);
+        }
+
+        if (downloadBtn) {
+            downloadBtn.disabled = !hasAggregatedRoute;
+        }
+
+        if (clearBtn) {
+            clearBtn.disabled = !this.isShowingAggregated && !this.activeCoin;
+        }
+    }
+
+    onAggregationOptionsChanged(reason) {
+        console.log(`⚙️ Aggregation option changed: ${reason}`, this.aggregationOptions);
+        this.updateCoinActionButtons();
+        this.refreshAggregatedRoute({ reason }).catch(error => {
+            console.error('❌ Failed to refresh aggregated route after option change:', error);
+            this.showNotification('Failed to update coin view. Check console for details.', 'error');
+        });
     }
 
     // Handle file selection (from input or drag/drop)
@@ -970,12 +1099,194 @@ class FileUploadHandler {
         } else if (aggregationMode === 'time') {
             aggregatedRoute = this.createTimeBasedAggregation(sortedRoutes, elevationMode);
         } else if (aggregationMode === 'fictional') {
-            aggregatedRoute = await this.createFictionalRouteAggregation(sortedRoutes, elevationMode, pathPattern);
+            aggregatedRoute = await this.createFictionalRouteAggregation(sortedRoutes, elevationMode, pathPattern, 'distance');
         } else {
             throw new Error(`Unknown aggregation mode: ${aggregationMode}`);
         }
 
         return aggregatedRoute;
+    }
+
+    getSelectedRoutesSorted() {
+        const selectedRoutes = this.uploadedRoutes.filter(route => this.selectedRoutes.has(route.id));
+        return selectedRoutes.sort((a, b) => this.extractRouteTimestamp(a) - this.extractRouteTimestamp(b));
+    }
+
+    calculateCombinedStats(routes) {
+        return routes.reduce((acc, route) => {
+            const stats = this.routeManipulator.calculateRouteStats(route);
+            return {
+                distance: acc.distance + (stats.distance || 0),
+                elevationGain: acc.elevationGain + (stats.elevationGain || 0),
+                elevationLoss: acc.elevationLoss + (stats.elevationLoss || 0),
+                duration: acc.duration + (stats.duration || 0)
+            };
+        }, {
+            distance: 0,
+            elevationGain: 0,
+            elevationLoss: 0,
+            duration: 0
+        });
+    }
+
+    getTimeAggregationParameters(routes) {
+        const allTimestamps = routes.flatMap(route =>
+            route.points
+                ?.filter(point => point.timestamp)
+                .map(point => new Date(point.timestamp)) || []
+        ).sort((a, b) => a - b);
+
+        if (allTimestamps.length === 0) {
+            throw new Error('No timestamped points found in selected routes');
+        }
+
+        const startTime = allTimestamps[0];
+        const endTime = allTimestamps.at(-1);
+        const totalTimespan = endTime - startTime;
+        const timeStepMs = totalTimespan < 28 * 24 * 60 * 60 * 1000 ? 60 * 1000 : 60 * 60 * 1000;
+        const stepLabel = timeStepMs >= 24 * 60 * 60 * 1000
+            ? 'day'
+            : timeStepMs >= 60 * 60 * 1000
+                ? 'hour'
+                : 'minute';
+
+        return { startTime, endTime, timeStepMs, stepLabel, totalTimespan };
+    }
+
+    async buildAggregatedRoute(routes, options) {
+        const sortedRoutes = [...routes];
+        if (sortedRoutes.length === 0) {
+            throw new Error('Cannot build aggregated route without routes');
+        }
+
+        console.log('🔄 Building aggregated route with options:', options, sortedRoutes.map(r => r.filename));
+
+        let aggregatedRoute;
+
+        if (!options || options.overlay === 'real') {
+            aggregatedRoute = this.createDistanceBasedAggregation(sortedRoutes, options?.elevationMode || 'actual');
+        } else {
+            aggregatedRoute = await this.createFictionalRouteAggregation(
+                sortedRoutes,
+                options.elevationMode || 'actual',
+                options.overlay,
+                options.domain || 'distance'
+            );
+        }
+
+        if (!aggregatedRoute.id) {
+            aggregatedRoute.id = this.generateRouteId();
+        }
+
+        aggregatedRoute.metadata = {
+            ...(aggregatedRoute.metadata || {}),
+            coinOptions: { ...options },
+            coinSourceRoutes: sortedRoutes.map(route => ({
+                id: route.id,
+                filename: route.filename,
+                timestamp: this.extractRouteTimestamp(route)
+            }))
+        };
+
+        return aggregatedRoute;
+    }
+
+    async refreshAggregatedRoute({ reason = 'manual' } = {}) {
+        if (this.activeCoin) {
+            console.log('🪙 Active coin loaded; skipping aggregation refresh');
+            return;
+        }
+
+        this.pendingAggregation = { reason };
+
+        if (this.isAggregating) {
+            console.log('⏳ Aggregation already in progress, will rerun after completion');
+            return;
+        }
+
+        while (this.pendingAggregation) {
+            const context = this.pendingAggregation;
+            this.pendingAggregation = null;
+            await this.computeAggregatedRoute(context.reason);
+        }
+    }
+
+    async computeAggregatedRoute(reason) {
+        const routesToAggregate = this.getSelectedRoutesSorted();
+
+        if (routesToAggregate.length === 0) {
+            console.log('ℹ️ No selected routes for aggregation; clearing aggregated route');
+            this.aggregatedRoute = null;
+            if (!this.activeCoin) {
+                this.isShowingAggregated = false;
+            }
+            this.updateCoinActionButtons();
+            this.updateStatsDisplay();
+            return;
+        }
+
+        this.isAggregating = true;
+        try {
+            const aggregatedRoute = await this.buildAggregatedRoute(routesToAggregate, this.aggregationOptions);
+            this.aggregatedRoute = aggregatedRoute;
+
+            console.log(`✅ Aggregated route refreshed (${reason}) -> ${aggregatedRoute.filename}`);
+
+            if (this.isShowingAggregated) {
+                this.clearAllVisualizationsRoutes();
+                this.addRouteToAllVisualizations(aggregatedRoute);
+                if (this.currentViewMode === '3d' && this.is3DInitialized) {
+                    this.refresh3DViewer();
+                }
+            }
+
+            this.updateStatsDisplay();
+        } catch (error) {
+            console.error('❌ Aggregation failed:', error);
+            throw error;
+        } finally {
+            this.isAggregating = false;
+            this.updateCoinActionButtons();
+        }
+    }
+
+    handleSaveCoinClick() {
+        if (this.activeCoin) {
+            this.showNotification('Clear the active coin before saving a new one.', 'info');
+            return;
+        }
+
+        if (!this.aggregatedRoute) {
+            this.showNotification('Select routes and choose View Coin before saving.', 'warning');
+            return;
+        }
+
+        console.log('💾 Save Coin requested (implementation pending)');
+        this.showNotification('Save Coin will be available in an upcoming step.', 'info');
+    }
+
+    handleDownloadCoinClick() {
+        const routeToDownload = this.activeCoin?.route || this.aggregatedRoute;
+
+        if (!routeToDownload) {
+            this.showNotification('Create or load a coin before downloading.', 'warning');
+            return;
+        }
+
+        this.downloadRoute(routeToDownload.id);
+    }
+
+    handleClearCoinClick() {
+        if (!this.isShowingAggregated && !this.activeCoin) {
+            return;
+        }
+
+        this.activeCoin = null;
+        this.isShowingAggregated = false;
+
+        this.showMapView();
+        this.notifyStateChange('selected-routes-changed', { reason: 'coin-cleared' });
+        this.updateCoinActionButtons();
     }
 
     // Create distance-based aggregation (existing logic with elevation mode support)
@@ -1078,39 +1389,22 @@ class FileUploadHandler {
         // Step 1: Spatially aggregate routes using RouteManipulator
         let spatiallyAggregatedRoute = this.routeManipulator.aggregateAndResampleRoutes(routes);
         
-        // Step 2: Find time range across all routes
-        const allTimestamps = routes.flatMap(route => 
-            route.points
-                .filter(point => point.timestamp)
-                .map(point => new Date(point.timestamp))
-        ).sort((a, b) => a - b);
-        
-        if (allTimestamps.length === 0) {
-            throw new Error('No timestamped points found in selected routes');
-        }
-        
-        const startTime = allTimestamps[0];
-        const endTime = allTimestamps.at(-1);
-        const totalTimespan = endTime - startTime;
-        
-        // Step 3: Determine appropriate time step
-        // < 28 days: 1 minute, else 1 hour
-        const timeStepMs = totalTimespan < 28 * 24 * 60 * 60 * 1000 ? 60 * 1000 : 60 * 60 * 1000;
-        
-        // Step 4: Convert to time domain
+        const timeParams = this.getTimeAggregationParameters(routes);
+
+        // Step 3: Convert to time domain
         let aggregatedRoute = this.routeManipulator.convertToTimeDomain(
             spatiallyAggregatedRoute,
-            startTime,
-            endTime,
-            timeStepMs
+            timeParams.startTime,
+            timeParams.endTime,
+            timeParams.timeStepMs
         );
         
-        // Step 5: Apply elevation mode processing
+        // Step 4: Apply elevation mode processing
         if (elevationMode === 'cumulative') {
             aggregatedRoute = this.routeManipulator.convertToCumulativeElevation(aggregatedRoute);
         }
         
-        // Step 5.5: Scale elevation to 10km for natural 3D visualization
+        // Step 5: Scale elevation to 10km for natural 3D visualization
         console.log(`📏 Scaling elevation for 3D visualization...`);
         aggregatedRoute = this.routeManipulator.scaleElevation(aggregatedRoute, 10000);
         
@@ -1121,18 +1415,15 @@ class FileUploadHandler {
         aggregatedRoute.duration = originalStats.duration;
         
         // Step 6: Update metadata
-        const stepLabel = timeStepMs >= 24 * 60 * 60 * 1000 ? 'day' :
-                         timeStepMs >= 60 * 60 * 1000 ? 'hour' : 'minute';
-        
         aggregatedRoute.filename = `Aggregated Route (${routes.length} routes) - ${elevationMode === 'actual' ? 'Time-based' : 'Time-based Cumulative'}`;
         aggregatedRoute.metadata = {
             ...aggregatedRoute.metadata,
             name: `Time-based Aggregated Route - ${routes.map(r => r.filename).join(', ')}`,
-            description: `Spatially connected and time-aggregated from ${routes.length} routes using ${stepLabel} intervals with ${elevationMode} elevation`,
+            description: `Spatially connected and time-aggregated from ${routes.length} routes using ${timeParams.stepLabel} intervals with ${elevationMode} elevation`,
             aggregationMode: 'time',
             elevationMode: elevationMode,
-            timeStep: stepLabel,
-            timeStepMs: timeStepMs,
+            timeStep: timeParams.stepLabel,
+            timeStepMs: timeParams.timeStepMs,
             // Store original stats for reference
             originalStats: originalStats,
             sourceRoutes: routes.map(r => ({
@@ -1155,63 +1446,62 @@ class FileUploadHandler {
     }
 
     // Create fictional route aggregation using RouteManipulator
-    async createFictionalRouteAggregation(routes, elevationMode, pathPattern) {
-        console.log(`🎨 Creating fictional route with ${pathPattern} pattern and ${elevationMode} elevation using RouteManipulator...`);
-        
-        // IMPORTANT: Preserve the true aggregated statistics before scaling for visualization
-        const originalStats = routes.reduce((acc, route) => {
-            const rstats = this.routeManipulator.calculateRouteStats(route);
-            return {
-                distance: acc.distance + rstats.distance,
-                elevationGain: acc.elevationGain + rstats.elevationGain,
-                elevationLoss: acc.elevationLoss + rstats.elevationLoss,
-                duration: acc.duration + rstats.duration
-            };
-        }, {
-            distance: 0,
-            elevationGain: 0,
-            elevationLoss: 0,
-            duration: 0
-        });
+    async createFictionalRouteAggregation(routes, elevationMode, pathPattern, distributionMode = 'distance') {
+        console.log(`🎨 Creating fictional route with ${pathPattern} pattern, ${elevationMode} elevation, ${distributionMode} distribution`);
 
-        const fictionalDistanceDisplay = this.formatDistance(originalStats.distance);
-        const fictionalElevationDisplay = this.formatElevation(originalStats.elevationGain, { precision: 1 });
-        console.log(`📊 Original combined stats before aggregation: ${fictionalDistanceDisplay}, ${fictionalElevationDisplay} gain`);
+        const originalStats = this.calculateCombinedStats(routes);
+        const distanceDisplay = this.formatDistance(originalStats.distance);
+        const elevationDisplay = this.formatElevation(originalStats.elevationGain, { precision: 1 });
+        console.log(`📊 Combined stats before transformation: ${distanceDisplay}, ${elevationDisplay} gain`);
 
+        // Step 1: Aggregate routes spatially
+        let workingRoute = this.routeManipulator.aggregateAndResampleRoutes(routes);
 
-        // Step 1: Aggregate routes using RouteManipulator (distance-based)
-        let aggregatedRoute = this.routeManipulator.aggregateAndResampleRoutes(routes);
-        
-        // Step 2: Apply elevation mode processing  
-        if (elevationMode === 'cumulative') {
-            aggregatedRoute = this.routeManipulator.convertToCumulativeElevation(aggregatedRoute);
+        // Step 2: Optionally convert to time domain before elevation adjustments
+        let timeParams = null;
+        if (distributionMode === 'time') {
+            timeParams = this.getTimeAggregationParameters(routes);
+            console.log(`⏱️ Applying time distribution with ${timeParams.stepLabel} steps`);
+            workingRoute = this.routeManipulator.convertToTimeDomain(
+                workingRoute,
+                timeParams.startTime,
+                timeParams.endTime,
+                timeParams.timeStepMs
+            );
         }
 
-        // Step 3: Apply the predetermined path using RouteManipulator (this overlays coordinates only)
+        // Step 3: Apply elevation mode (after time conversion if applicable)
+        if (elevationMode === 'cumulative') {
+            workingRoute = this.routeManipulator.convertToCumulativeElevation(workingRoute);
+        }
+
+        // Step 4: Overlay predetermined path
         console.log(`🗺️ Applying predetermined path: ${pathPattern}`);
-        let fictionalRoute = await this.routeManipulator.applyPredeterminedPath(aggregatedRoute, pathPattern);
-        
-        // Step 4: Scale elevation to 10km for natural 3D visualization
-        console.log(`📏 Scaling elevation for 3D visualization...`);
+        let fictionalRoute = await this.routeManipulator.applyPredeterminedPath(workingRoute, pathPattern);
+
+        // Step 5: Scale elevation for visualization
+        console.log('📏 Scaling elevation for visualization');
         fictionalRoute = this.routeManipulator.scaleElevation(fictionalRoute, 10000);
-        
-        // Step 5: Restore the true aggregated statistics (after all transformations)
+
+        // Step 6: Restore statistics
         fictionalRoute.distance = originalStats.distance;
         fictionalRoute.elevationGain = originalStats.elevationGain;
         fictionalRoute.elevationLoss = originalStats.elevationLoss;
         fictionalRoute.duration = originalStats.duration;
-        
-        // Step 6: Update metadata for fictional route
-        fictionalRoute.filename = `Fictional Route (${routes.length} routes) - ${fictionalRoute?.metadata?.templateName || pathPattern} - ${elevationMode === 'actual' ? 'Elevation' : 'Cumulative'}`;
+
+        // Step 7: Update metadata
+        fictionalRoute.filename = `Fictional Route (${routes.length} routes) - ${fictionalRoute?.metadata?.templateName || pathPattern} - ${distributionMode === 'time' ? 'Time' : 'Distance'} ${elevationMode === 'actual' ? 'Elevation' : 'Cumulative'}`;
         fictionalRoute.metadata = {
             ...fictionalRoute.metadata,
             name: `Fictional ${pathPattern} Route - ${routes.map(r => r.filename).join(', ')}`,
-            description: `Synthetic ${pathPattern} route preserving elevation and timing from ${routes.length} routes with ${elevationMode} elevation`,
+            description: `Synthetic ${pathPattern} route using ${distributionMode} distribution with ${elevationMode} elevation across ${routes.length} routes`,
             aggregationMode: 'fictional',
-            elevationMode: elevationMode,
-            pathPattern: pathPattern,
-            // Store original stats for reference
-            originalStats: originalStats,
+            elevationMode,
+            pathPattern,
+            distributionMode,
+            timeStep: timeParams?.stepLabel,
+            timeStepMs: timeParams?.timeStepMs,
+            originalStats,
             sourceRoutes: routes.map(r => ({
                 id: r.id,
                 filename: r.filename,
@@ -1219,10 +1509,10 @@ class FileUploadHandler {
             }))
         };
 
-        console.log(`✅ Fictional ${pathPattern} route created using RouteManipulator:`, {
+        console.log(`✅ Fictional ${pathPattern} route ready`, {
             filename: fictionalRoute.filename,
             totalPoints: fictionalRoute.points.length,
-            pathPattern: pathPattern,
+            distribution: distributionMode,
             totalDistance: this.formatDistance(fictionalRoute.distance),
             totalElevationGain: this.formatElevation(fictionalRoute.elevationGain),
             sourceRoutes: fictionalRoute.metadata.sourceRoutes.length
@@ -1304,6 +1594,7 @@ class FileUploadHandler {
         
         // Return to initial state
         this.showInitialUIState();
+        this.updateCoinActionButtons();
         
         console.log('✅ All routes cleared');
     }
@@ -1530,86 +1821,45 @@ class FileUploadHandler {
         const routeListContainer = document.getElementById('route-list');
         if (!routeListContainer) return;
 
-        if (this.uploadedRoutes.length === 0 && !this.aggregatedRoute) {
-            routeListContainer.innerHTML = '<p class="empty-state">No routes uploaded yet</p>';
+        if (this.uploadedRoutes.length === 0) {
+            routeListContainer.innerHTML = '<p class="empty-state">Upload GPX routes to get started</p>';
             return;
         }
 
-        let routeItems = '';
+        const selectionLocked = Boolean(this.activeCoin);
 
-        // Show aggregated route if it exists (checkbox state based on isShowingAggregated)
-        if (this.aggregatedRoute) {
-            const color = '#ff6b35'; // Orange color for aggregated route
-            const duration = this.aggregatedRoute.duration ? this.formatDuration(this.aggregatedRoute.duration) : 'Unknown';
-            const distanceDisplay = this.formatDistance(this.aggregatedRoute.distance);
-            const elevationDisplay = this.formatElevation(this.aggregatedRoute.elevationGain);
-            
-            routeItems += `
-                <div class="route-list-item aggregated-route" data-route-id="${this.aggregatedRoute.id}">
-                    <div class="route-item-checkbox">
-                        <input type="checkbox" id="route-checkbox-${this.aggregatedRoute.id}" 
-                               ${this.isShowingAggregated ? 'checked' : ''} 
-                               onchange="window.fileUploader.toggleRouteVisibility('${this.aggregatedRoute.id}')">
-                    </div>
-                    <div class="route-item-info">
-                        <h4 title="${this.aggregatedRoute.filename}">🔗 ${this.truncateFilename(this.aggregatedRoute.filename)}</h4>
-                        <div class="route-item-stats">
-                            <span>📏 ${distanceDisplay}</span>
-                            <span>⛰️ ${elevationDisplay}</span>
-                            <span>⏱️ ${duration}</span>
-                        </div>
-                    </div>
-                    <div class="route-item-color" style="background-color: ${color}"></div>
-                    <div class="route-item-actions">
-                        <button class="route-action-btn" onclick="window.fileUploader.downloadRoute('${this.aggregatedRoute.id}')" title="Download GPX">
-                            💾
-                        </button>
-                        <button class="route-action-btn" onclick="window.fileUploader.zoomToRoute('${this.aggregatedRoute.id}')" title="Zoom to Route">
-                            🔍
-                        </button>
-                        <button class="route-action-btn" onclick="window.fileUploader.removeAggregatedRoute()" title="Remove Aggregated Route">
-                            🗑️
-                        </button>
-                    </div>
-                </div>
-            `;
-        }
+        const routeItems = this.uploadedRoutes.map((route, index) => {
+            const isSelected = this.selectedRoutes.has(route.id);
+            const classes = ['route-list-item', isSelected ? 'selected' : 'unselected'];
+            if (selectionLocked) {
+                classes.push('disabled');
+            }
 
-        // Show individual routes (checkbox state based on selection and mutual exclusivity)
-        routeItems += this.uploadedRoutes.map((route, index) => {
-            const color = this.mapViz.routeLayers.find(layer => layer.id === route.id)?.color || '#2563eb';
-            const duration = route.duration ? this.formatDuration(route.duration) : 'Unknown';
             const distanceDisplay = this.formatDistance(route.distance);
             const elevationDisplay = this.formatElevation(route.elevationGain);
-            // Individual route is selected if it's in selectedRoutes AND we're not showing aggregated
-            const isSelected = !this.isShowingAggregated && this.selectedRoutes.has(route.id);
-            
+            const durationDisplay = route.duration ? this.formatDuration(route.duration) : 'Unknown';
+            const color = this.mapViz?.routeLayers?.find(layer => layer.id === route.id)?.color || '#2563eb';
+            const disabledAttr = selectionLocked ? 'disabled' : '';
+
             return `
-                <div class="route-list-item ${isSelected ? 'selected' : 'unselected'}" data-route-id="${route.id}">
+                <div class="${classes.join(' ')}" data-route-id="${route.id}">
                     <div class="route-item-checkbox">
-                        <input type="checkbox" id="route-checkbox-${route.id}" 
-                               ${isSelected ? 'checked' : ''} 
+                        <input type="checkbox" ${disabledAttr} id="route-checkbox-${route.id}" ${isSelected ? 'checked' : ''}
                                onchange="window.fileUploader.toggleRouteVisibility('${route.id}')">
                     </div>
                     <div class="route-item-info">
-                        <h4 title="${route.filename}">${this.truncateFilename(route.filename)}</h4>
+                        <h4 title="${route.filename}">${index + 1}. ${this.truncateFilename(route.filename)}</h4>
                         <div class="route-item-stats">
                             <span>📏 ${distanceDisplay}</span>
                             <span>⛰️ ${elevationDisplay}</span>
-                            <span>⏱️ ${duration}</span>
+                            <span>⏱️ ${durationDisplay}</span>
                         </div>
                     </div>
                     <div class="route-item-color" style="background-color: ${color}"></div>
                     <div class="route-item-actions">
-                        <button class="route-action-btn" onclick="window.fileUploader.downloadRoute('${route.id}')" title="Download GPX">
-                            💾
-                        </button>
-                        <button class="route-action-btn" onclick="window.fileUploader.zoomToRoute('${route.id}')" title="Zoom to Route">
-                            🔍
-                        </button>
-                        <button class="route-action-btn" onclick="window.fileUploader.removeRouteById('${route.id}')" title="Remove Route">
-                            🗑️
-                        </button>
+                        <button class="route-action-btn" onclick="window.fileUploader.downloadRoute('${route.id}')" title="Download GPX">💾</button>
+                        <button class="route-action-btn" onclick="window.fileUploader.zoomToRoute('${route.id}')" title="Zoom to Route">🔍</button>
+                        <button class="route-action-btn" onclick="window.fileUploader.removeRouteById('${route.id}')" title="Remove Route">🗑️</button>
                     </div>
                 </div>
             `;
@@ -1814,51 +2064,22 @@ class FileUploadHandler {
         console.log(`🗑️ Route removed: ${routeId}`);
     }
 
-    // Toggle route visibility (with mutually exclusive aggregated vs individual routes)
+    // Toggle route visibility for selection list
     toggleRouteVisibility(routeId) {
         const checkbox = document.getElementById(`route-checkbox-${routeId}`);
         const isChecked = checkbox?.checked || false;
 
-        if (routeId === this.aggregatedRoute?.id) {
-            // Handle aggregated route visibility
-            if (isChecked) {
-                // Select aggregated route, unselect all individual routes
-                console.log('🔗 Selecting aggregated route - clearing individual route selections');
-                this.selectedRoutes.clear();
-                this.isShowingAggregated = true;
-            } else {
-                // Unselect aggregated route, default to selecting all individual routes
-                console.log('🔗 Unselecting aggregated route - selecting all individual routes');
-                this.isShowingAggregated = false;
-                this.uploadedRoutes.forEach(route => {
-                    this.selectedRoutes.add(route.id);
-                });
-            }
+        if (isChecked) {
+            this.selectedRoutes.add(routeId);
         } else {
-            // Handle individual route visibility
-            if (isChecked) {
-                // Select individual route, unselect aggregated route if it was showing
-                if (this.isShowingAggregated) {
-                    console.log('🔗 Selecting individual route - clearing aggregated route');
-                    this.isShowingAggregated = false;
-                    this.selectedRoutes.clear(); // Start fresh with individual selections
-                }
-                this.selectedRoutes.add(routeId);
-            } else {
-                // Unselect individual route
-                this.selectedRoutes.delete(routeId);
-            }
+            this.selectedRoutes.delete(routeId);
         }
 
-        // Single unified notification
-        this.notifyStateChange('selected-routes-changed', { 
+        this.notifyStateChange('selected-routes-changed', {
             reason: 'visibility-toggled',
-            routeId, 
-            visible: isChecked 
+            routeId,
+            visible: isChecked
         });
-        
-        console.log(`👁️ Route ${routeId} visibility: ${isChecked ? 'shown' : 'hidden'}`);
-        console.log(`📊 Current state: aggregated=${this.isShowingAggregated}, individual=${this.selectedRoutes.size} selected`);
     }
 
     // Show a specific route (legacy method - use unified approach)
@@ -1883,31 +2104,6 @@ class FileUploadHandler {
     hideAggregatedRoute() {
         this.isShowingAggregated = false;
         this.notifyStateChange('selected-routes-changed', { reason: 'hide-aggregated' });
-    }
-
-    // Remove aggregated route completely
-    removeAggregatedRoute() {
-        if (!this.aggregatedRoute) return;
-
-        // Remember which routes were used for aggregation
-        const sourceRouteIds = this.aggregatedRoute.metadata?.sourceRoutes?.map(r => r.id) || [];
-        
-        // Clear the aggregated route
-        this.aggregatedRoute = null;
-        this.isShowingAggregated = false;
-
-        // Restore selection for the routes that were used in aggregation
-        sourceRouteIds.forEach(routeId => {
-            const route = this.uploadedRoutes.find(r => r.id === routeId);
-            if (route) {
-                this.selectedRoutes.add(routeId);
-            }
-        });
-
-        // Single notification with restored routes info
-        this.notifyStateChange('selected-routes-changed', { reason: 'aggregated-route-removed' });
-        
-        console.log(`🗑️ Aggregated route removed, restored ${sourceRouteIds.length} individual routes`);
     }
 
     // Update just the stats display
@@ -1991,11 +2187,26 @@ class FileUploadHandler {
     // Switch view mode (unified method for HTML onclick handlers)
     async switchViewMode(mode) {
         if (mode === 'map') {
+            this.currentViewMode = 'map';
             this.showMapView();
-        } else if (mode === '3d') {
-            await this.show3DView();
+            this.updateCoinActionButtons();
+            return;
         }
-        this.currentViewMode = mode;
+
+        if (mode === '3d') {
+            if (!this.activeCoin) {
+                await this.refreshAggregatedRoute({ reason: 'view-toggle' });
+                if (!this.aggregatedRoute) {
+                    this.showNotification('Select at least one route to preview your coin.', 'warning');
+                    return;
+                }
+            }
+
+            this.isShowingAggregated = true;
+            await this.show3DView();
+            this.currentViewMode = '3d';
+            this.updateCoinActionButtons();
+        }
     }
 
     // Switch to map view

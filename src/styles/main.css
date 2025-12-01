@@ -982,6 +982,15 @@ body {
     border-left: 3px solid var(--primary-color);
 }
 
+.route-list-item.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.route-list-item.disabled .route-item-actions {
+    opacity: 0.4;
+}
+
 .route-item-info h4 {
     font-size: 0.875rem;
     font-weight: 600;
