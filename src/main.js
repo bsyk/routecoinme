@@ -20,6 +20,7 @@ class RouteCoinMe {
         this.initializeUnitToggle();
         this.initializeFileUpload();
         this.setupEventListeners();
+        this.setupResponsiveNavigation();
         this.displayWelcomeMessage();
     }
 
@@ -84,6 +85,41 @@ class RouteCoinMe {
             console.log('✅ RouteCoinMe loaded successfully');
             this.showSetupInstructions();
         });
+    }
+
+    setupResponsiveNavigation() {
+        const navToggle = document.getElementById('nav-toggle');
+        const nav = document.getElementById('primary-nav');
+
+        if (!navToggle || !nav) {
+            return;
+        }
+
+        const closeNav = () => {
+            nav.classList.remove('is-open');
+            navToggle.setAttribute('aria-expanded', 'false');
+        };
+
+        navToggle.addEventListener('click', () => {
+            const isOpen = nav.classList.toggle('is-open');
+            navToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+
+        nav.querySelectorAll('a, button').forEach((control) => {
+            control.addEventListener('click', () => {
+                if (window.innerWidth <= 900) {
+                    closeNav();
+                }
+            });
+        });
+
+        const handleResize = () => {
+            if (window.innerWidth > 900) {
+                closeNav();
+            }
+        };
+
+        window.addEventListener('resize', handleResize);
     }
 
     setupDemoAreaClick() {

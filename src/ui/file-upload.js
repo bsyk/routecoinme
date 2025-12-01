@@ -37,6 +37,10 @@ class FileUploadHandler {
         this.suppressOptionEvents = false;
         this.pendingRouteScrollId = null;
         this.pendingCoinScrollId = null;
+        this.isSidebarDrawerOpen = false;
+        this.handleSidebarEscape = this.handleSidebarEscape.bind(this);
+        this.sidebarDrawerResizeHandler = null;
+        this.wasUsingSidebarDrawer = null;
         
         // State management system
         this.stateListeners = new Set();
@@ -665,10 +669,162 @@ class FileUploadHandler {
                 clearBtn.addEventListener('click', () => this.handleClearCoinClick());
             }
 
+            this.setupSidebarDrawer();
             this.updateDomainControlState();
             this.updateCoinActionButtons();
             this.updateSidebarControlsState();
         }, 100);
+    }
+
+    setupSidebarDrawer() {
+        const sidebar = document.getElementById('aggregation-sidebar');
+        const sidebarToggle = document.getElementById('sidebar-toggle');
+        const sidebarClose = document.getElementById('sidebar-close-btn');
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+        if (!sidebar || !sidebarToggle || !sidebarOverlay) {
+            return;
+        }
+
+        this.sidebarElements = { sidebar, sidebarToggle, sidebarClose, sidebarOverlay };
+
+        const handleToggle = () => {
+            if (!this.shouldUseSidebarDrawer()) {
+                sidebarToggle.setAttribute('aria-expanded', 'false');
+                return;
+            }
+
+            if (this.isSidebarDrawerOpen) {
+                this.closeSidebarDrawer({ focusToggle: true });
+            } else {
+                this.openSidebarDrawer();
+            }
+        };
+
+        sidebarToggle.addEventListener('click', handleToggle);
+        sidebarClose?.addEventListener('click', () => this.closeSidebarDrawer({ focusToggle: true }));
+        sidebarOverlay.addEventListener('click', () => this.closeSidebarDrawer({ focusToggle: true }));
+        sidebar.addEventListener('keydown', this.handleSidebarEscape);
+
+        if (this.sidebarDrawerResizeHandler) {
+            window.removeEventListener('resize', this.sidebarDrawerResizeHandler);
+        }
+
+        this.sidebarDrawerResizeHandler = () => {
+            this.updateSidebarAccessibility();
+        };
+
+        window.addEventListener('resize', this.sidebarDrawerResizeHandler);
+
+        this.updateSidebarAccessibility();
+    }
+
+    shouldUseSidebarDrawer() {
+        return window.innerWidth <= 1100;
+    }
+
+    openSidebarDrawer() {
+        if (!this.sidebarElements || !this.shouldUseSidebarDrawer()) {
+            return;
+        }
+
+        const { sidebar, sidebarToggle, sidebarClose, sidebarOverlay } = this.sidebarElements;
+        this.isSidebarDrawerOpen = true;
+        sidebar.classList.add('is-open');
+        sidebar.setAttribute('aria-hidden', 'false');
+        sidebarToggle.setAttribute('aria-expanded', 'true');
+        sidebarOverlay.hidden = false;
+        document.body.classList.add('sidebar-open');
+
+        this.refreshVisualizationsAfterSidebarToggle();
+
+        requestAnimationFrame(() => {
+            if (sidebarClose) {
+                sidebarClose.focus();
+            } else {
+                sidebar.focus();
+            }
+        });
+    }
+
+    closeSidebarDrawer({ focusToggle = false } = {}) {
+        if (!this.sidebarElements) {
+            return;
+        }
+
+        const { sidebar, sidebarToggle, sidebarOverlay } = this.sidebarElements;
+        this.isSidebarDrawerOpen = false;
+        sidebar.classList.remove('is-open');
+        sidebarToggle.setAttribute('aria-expanded', 'false');
+        sidebarOverlay.hidden = true;
+        document.body.classList.remove('sidebar-open');
+
+        this.updateSidebarAccessibility();
+        this.refreshVisualizationsAfterSidebarToggle();
+
+        if (focusToggle && this.shouldUseSidebarDrawer()) {
+            requestAnimationFrame(() => sidebarToggle.focus());
+        }
+    }
+
+    handleSidebarEscape(event) {
+        if (event.key === 'Escape' && this.isSidebarDrawerOpen) {
+            event.preventDefault();
+            this.closeSidebarDrawer({ focusToggle: true });
+        }
+    }
+
+    updateSidebarAccessibility() {
+        if (!this.sidebarElements) {
+            return;
+        }
+
+        const { sidebar, sidebarToggle, sidebarOverlay } = this.sidebarElements;
+        const useDrawer = this.shouldUseSidebarDrawer();
+        const modeChanged = this.wasUsingSidebarDrawer !== useDrawer;
+        this.wasUsingSidebarDrawer = useDrawer;
+
+        if (!useDrawer) {
+            this.isSidebarDrawerOpen = false;
+            sidebar.classList.remove('is-open');
+            sidebar.setAttribute('aria-hidden', 'false');
+            sidebarOverlay.hidden = true;
+            sidebarToggle.setAttribute('aria-expanded', 'false');
+            document.body.classList.remove('sidebar-open');
+            if (modeChanged) {
+                this.refreshVisualizationsAfterSidebarToggle();
+            }
+            return;
+        }
+
+        sidebar.setAttribute('aria-hidden', this.isSidebarDrawerOpen ? 'false' : 'true');
+        sidebarOverlay.hidden = this.isSidebarDrawerOpen ? false : true;
+        if (!this.isSidebarDrawerOpen) {
+            document.body.classList.remove('sidebar-open');
+            sidebar.classList.remove('is-open');
+        }
+
+        if (modeChanged && this.isSidebarDrawerOpen) {
+            this.refreshVisualizationsAfterSidebarToggle();
+        }
+    }
+
+    refreshVisualizationsAfterSidebarToggle() {
+        requestAnimationFrame(() => {
+            if (this.mapViz?.map) {
+                this.mapViz.map.invalidateSize();
+            }
+
+            if (this.currentViewMode === '3d' && this.is3DInitialized) {
+                const viewerContainer = document.getElementById('viewer-3d-container');
+                if (viewerContainer) {
+                    const rect = viewerContainer.getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0) {
+                        this.viewer3D.resize(rect.width, rect.height);
+                    }
+                }
+            }
+        });
     }
 
     updateDomainControlState() {
