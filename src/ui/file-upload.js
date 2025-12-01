@@ -2477,6 +2477,21 @@ class FileUploadHandler {
         }
 
         const selectionLocked = Boolean(this.activeCoin);
+        const totalRoutes = this.uploadedRoutes.length;
+        const selectedCount = this.selectedRoutes.size;
+        const allSelected = totalRoutes > 0 && selectedCount === totalRoutes;
+        const hasAnythingToClear = selectedCount > 0 || this.isShowingAggregated;
+        const selectAllDisabledAttr = (selectionLocked || allSelected) ? 'disabled' : '';
+        const selectNoneDisabledAttr = (selectionLocked || !hasAnythingToClear) ? 'disabled' : '';
+
+        const bulkControls = `
+            <div class="route-list-controls">
+                <button type="button" class="btn btn-secondary" ${selectAllDisabledAttr}
+                    onclick="window.fileUploader.selectAllRoutes()">Select All</button>
+                <button type="button" class="btn btn-secondary" ${selectNoneDisabledAttr}
+                    onclick="window.fileUploader.selectNoRoutes()">Select None</button>
+            </div>
+        `;
 
         const routeItems = this.uploadedRoutes.map((route, index) => {
             const isSelected = this.selectedRoutes.has(route.id);
@@ -2515,12 +2530,53 @@ class FileUploadHandler {
             `;
         }).join('');
 
-        routeListContainer.innerHTML = routeItems;
+        routeListContainer.innerHTML = bulkControls + routeItems;
 
         if (this.pendingRouteScrollId) {
             this.scrollListItemIntoView('route-list', `[data-route-id="${this.pendingRouteScrollId}"]`);
             this.pendingRouteScrollId = null;
         }
+    }
+
+    selectAllRoutes() {
+        if (this.activeCoin || this.uploadedRoutes.length === 0) {
+            return;
+        }
+
+        const previousSize = this.selectedRoutes.size;
+
+        this.uploadedRoutes.forEach(route => {
+            this.selectedRoutes.add(route.id);
+        });
+
+        if (this.selectedRoutes.size === previousSize) {
+            return;
+        }
+
+        this.notifyStateChange('selected-routes-changed', {
+            reason: 'select-all'
+        });
+    }
+
+    selectNoRoutes() {
+        if (this.activeCoin) {
+            return;
+        }
+
+        const hadSelection = this.selectedRoutes.size > 0;
+        const wasShowingAggregated = this.isShowingAggregated;
+
+        if (!hadSelection && !wasShowingAggregated) {
+            return;
+        }
+
+        this.selectedRoutes.clear();
+        this.isShowingAggregated = false;
+        this.pendingRouteScrollId = null;
+
+        this.notifyStateChange('selected-routes-changed', {
+            reason: 'select-none'
+        });
     }
 
     updateCoinList() {

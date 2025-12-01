@@ -1417,6 +1417,25 @@ body.sidebar-open {
     margin-bottom: 1rem;
 }
 
+.route-list-controls {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.route-list-controls .btn {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.75rem;
+}
+
+.route-list-controls button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .route-list-item {
     display: flex;
     justify-content: space-between;
