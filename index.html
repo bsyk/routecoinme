@@ -271,7 +271,7 @@
             <div class="privacy-modal-content">
                 <div class="privacy-section">
                     <h3>📱 Local-First Approach</h3>
-                    <p>RouteCoinMe is designed with your privacy as our top priority. All your GPS route data is processed and stored locally on your device. We don't collect, transmit, or store any of your personal route information on our servers.</p>
+                    <p>RouteCoinMe is designed with your privacy as our top priority. All your GPS route data is processed and stored locally on your device by default. If you choose to import activities from Strava, we temporarily relay that activity through our secure cloud importer to deliver it to your browser; the data is discarded immediately after transfer and never logged or stored on our servers.</p>
                 </div>
 
                 <div class="privacy-section">
@@ -280,6 +280,7 @@
                         <li><strong>GPX Files:</strong> Your uploaded route files are processed entirely in your browser</li>
                         <li><strong>Route Statistics:</strong> Distance, elevation, and timing data calculated locally</li>
                         <li><strong>Browser Storage:</strong> Routes saved to your device's local storage for convenience</li>
+                        <li><strong>Strava Imports:</strong> Selected Strava activities pass through our stateless cloud relay only long enough to reach your browser; nothing is persisted</li>
                         <li><strong>No Personal Information:</strong> We don't collect names, emails, or any identifying data</li>
                     </ul>
                 </div>
@@ -288,7 +289,8 @@
                     <h3>💾 Data Storage</h3>
                     <p>Your route data is stored using your browser's local storage mechanisms (IndexedDB or localStorage). This means:</p>
                     <ul>
-                        <li>Data stays on your device and is never transmitted to external servers</li>
+                        <li>Data stays on your device and is never transmitted to external servers unless you use the Strava importer</li>
+                        <li>Strava imports are streamed directly to your browser without being saved on our servers</li>
                         <li>Only you have access to your stored routes</li>
                         <li>Clearing your browser data will remove stored routes</li>
                         <li>No cloud synchronization or backup unless you explicitly choose it</li>
@@ -302,6 +304,7 @@
                         <li><strong>OpenStreetMap:</strong> Map tiles for route visualization (no personal data sent)</li>
                         <li><strong>Leaflet Maps:</strong> Client-side mapping library (no data transmission)</li>
                         <li><strong>Three.js:</strong> 3D visualization library (runs entirely in your browser)</li>
+                        <li><strong>RouteCoinMe Strava Importer:</strong> Cloud relay that fetches Strava activities you select and forwards them to your browser without logging or persistence</li>
                     </ul>
                 </div>
 
@@ -311,6 +314,7 @@
                     <ul>
                         <li>You explicitly authorize the connection through Strava's official OAuth</li>
                         <li>Only route data you specifically select is shared</li>
+                        <li>Our cloud importer briefly processes the selected activity to pass it to your device and then discards it</li>
                         <li>You can disconnect at any time</li>
                         <li>Strava's privacy policy applies to data shared with their service</li>
                         <li>Local processing remains the default for all operations</li>
@@ -324,7 +328,7 @@
                         <li><strong>No Analytics:</strong> We don't use Google Analytics or similar tracking</li>
                         <li><strong>No Cookies:</strong> No tracking cookies or session cookies</li>
                         <li><strong>No Fingerprinting:</strong> We don't attempt to identify or track users</li>
-                        <li><strong>No Server Logs:</strong> Route data never touches our servers to be logged</li>
+                        <li><strong>No Server Logs:</strong> We never log Strava import payloads or any route content on our servers</li>
                     </ul>
                 </div>
 
@@ -332,7 +336,8 @@
                     <h3>🛡️ Data Security</h3>
                     <p>Since all processing happens locally:</p>
                     <ul>
-                        <li>Your route data never travels over the internet</li>
+                        <li>Your route data never travels over the internet unless you opt into Strava imports</li>
+                        <li>Strava imports travel over encrypted channels and are not stored or logged by us</li>
                         <li>No risk of data breaches from our servers (we don't store your data)</li>
                         <li>Browser security features protect your local data</li>
                         <li>You maintain complete control over your information</li>
@@ -367,7 +372,7 @@
                         <li>Be clearly communicated through the application</li>
                         <li>Never reduce your privacy protections without your explicit consent</li>
                     </ul>
-                    <p><strong>Last Updated:</strong> November 27, 2025</p>
+                    <p><strong>Last Updated:</strong> November 30, 2025</p>
                 </div>
             </div>
             
@@ -390,7 +395,7 @@
             <div class="privacy-modal-content">
                 <div class="privacy-section">
                     <h3>🎯 Service Description</h3>
-                    <p>RouteCoinMe is a free, open-source web application that processes GPS route data locally on your device. We provide tools for aggregating, visualizing, and analyzing GPS routes from GPX files, with optional integration with third-party services like Strava.</p>
+                    <p>RouteCoinMe is a free, open-source web application that processes GPS route data locally on your device. We provide tools for aggregating, visualizing, and analyzing GPS routes from GPX files, with optional integration with third-party services like Strava. When you import from Strava, we use a secure cloud relay to fetch the selected activity and deliver it to your browser without retaining or logging the data.</p>
                 </div>
 
                 <div class="privacy-section">
@@ -414,10 +419,21 @@
                     <h3>💻 Local Processing</h3>
                     <p>RouteCoinMe operates entirely in your web browser. This means:</p>
                     <ul>
-                        <li>All GPS route processing happens on your device</li>
-                        <li>No data is sent to our servers for processing</li>
+                        <li>All GPS route processing happens on your device unless you opt into Strava imports</li>
+                        <li>Strava imports are relayed through our cloud importer solely to reach your browser and are discarded immediately</li>
                         <li>You maintain complete control over your route data</li>
                         <li>The service works offline once loaded</li>
+                    </ul>
+                </div>
+
+                <div class="privacy-section">
+                    <h3>☁️ Strava Import Handling</h3>
+                    <p>To support Strava imports, we operate a lightweight cloud service that:</p>
+                    <ul>
+                        <li>Requests the specific activity you select via Strava's API</li>
+                        <li>Streams the activity data directly to your browser over an encrypted connection</li>
+                        <li>Does not log, cache, or store the activity contents once delivery is complete</li>
+                        <li>Allows you to clear all imported data from your browser at any time</li>
                     </ul>
                 </div>
 
@@ -425,7 +441,8 @@
                     <h3>🔗 Third-Party Services</h3>
                     <p>RouteCoinMe may integrate with external services:</p>
                     <ul>
-                        <li><strong>Strava:</strong> Optional integration subject to Strava's terms and privacy policy</li>
+                        <li><strong>Strava:</strong> Optional integration subject to Strava's terms and privacy policy, delivered through our non-persistent cloud relay</li>
+                        <li><strong>RouteCoinMe Strava Importer:</strong> Secure cloud worker that fetches your selected Strava activity without retaining data</li>
                         <li><strong>OpenStreetMap:</strong> Map tiles provided under OpenStreetMap's terms</li>
                         <li><strong>CDN Services:</strong> For loading map tiles and libraries</li>
                     </ul>
