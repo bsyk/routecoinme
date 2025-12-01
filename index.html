@@ -75,7 +75,7 @@
 
         <!-- Route Visualization UI -->
         <div id="route-visualization-area" class="gpx-upload-area" style="display: none;">
-            
+
             <!-- Loading State -->
             <div id="loading-state" class="loading-section" style="display: none;">
                 <h3>� Processing GPX Files...</h3>
@@ -84,105 +84,164 @@
                     <div class="spinner"></div>
                 </div>
             </div>
-            
+
             <!-- Main Content (hidden during loading) -->
             <div id="main-content">
-                <h3>📊 GPX Routes Loaded</h3>
-                
-                <!-- Route Statistics -->
-                <div class="route-stats">
-                    <div class="stat-item">
-                        <span id="stat-routes-count" class="stat-number">0</span>
-                        <span class="stat-label">Routes</span>
-                    </div>
-                    <div class="stat-item">
-                        <span id="stat-total-distance" class="stat-number">0.0km</span>
-                        <span class="stat-label">Total Distance</span>
-                    </div>
-                    <div class="stat-item">
-                        <span id="stat-total-elevation" class="stat-number">0m</span>
-                        <span class="stat-label">Total Elevation</span>
-                    </div>
-                </div>
-                
-                <!-- Map Container -->
-                <div id="map-container" class="map-container" style="display: block;">
-                    <div id="route-map"></div>
-                    <div class="map-controls">
-                        <button id="map-fullscreen-btn" class="map-control-btn" onclick="window.fileUploader.toggleFullscreen()" title="Toggle Fullscreen">
-                            📐
-                        </button>
-                        <button id="map-fit-btn" class="map-control-btn" onclick="window.fileUploader.fitMapToRoutes()" title="Fit All Routes">
-                            🔍
-                        </button>
-                    </div>
-                            </div>
-
-                            <!-- 3D Viewer Container -->
-                            <div id="viewer-3d-container" class="viewer-3d-container" style="display: none;">
-                                <div id="route-3d-viewer" style="width: 100%; height: 100%; position: relative;"></div>
-                                
-                                <!-- Zoom Controls - Top Left -->
-                                <div class="control-overlay control-top-left">
-                                    <button id="3d-zoom-in-btn" class="control-btn" onclick="window.fileUploader.zoomIn3D()" title="Zoom In">+</button>
-                                    <button id="3d-zoom-out-btn" class="control-btn" onclick="window.fileUploader.zoomOut3D()" title="Zoom Out">−</button>
-                                </div>
-                                
-                                <!-- View Controls - Top Right -->
-                                <div class="control-overlay control-top-right">
-                                    <button id="3d-fit-view-btn" class="control-btn" onclick="window.fileUploader.fitToView3D()" title="Fit to View">△</button>
-                                    <button id="3d-reset-view-btn" class="control-btn" onclick="window.fileUploader.resetView3D()" title="Reset View">🏠</button>
-                                </div>
-                                
-                                <!-- Display Options - Bottom Right -->
-                                <div class="control-overlay control-bottom-right">
-                                    <label class="control-checkbox">
-                                        <input type="checkbox" id="filled-area-toggle" checked 
-                                               onchange="window.fileUploader.toggleFilledArea(this.checked)">
-                                        <span>Filled Areas</span>
-                                    </label>
-                                </div>
-                                
-                                <div id="viewer-3d-status" class="viewer-3d-status">
-                                    <span>Mouse: rotate • Wheel: zoom</span>
-                                </div>
-                            </div>
-
-                            <!-- View Mode Toggle -->
+                <div class="aggregation-layout">
+                    <section class="visualization-column">
+                        <div class="visualization-header">
+                            <h3>📊 GPX Routes Loaded</h3>
                             <div id="viewer-toggle-buttons" class="viewer-toggle-buttons">
-                                <button id="map-view-btn" class="viewer-toggle-btn active" onclick="window.fileUploader.switchViewMode('map')">
+                                <button id="map-view-btn" class="viewer-toggle-btn active" type="button">
                                     🗺️ Map View
                                 </button>
-                                <button id="3d-view-btn" class="viewer-toggle-btn" onclick="window.fileUploader.switchViewMode('3d')">
-                                    🏔️ 3D View
+                                <button id="view-coin-btn" class="viewer-toggle-btn" type="button">
+                                    🪙 View Coin
                                 </button>
                             </div>
-                            
-                            <!-- Route List -->
-                            <div id="route-list-panel" class="route-list-panel">
-                                <h4>Routes on Map</h4>
-                                <div id="route-list"></div>
+                        </div>
+
+                        <!-- Route Statistics -->
+                        <div class="route-stats">
+                            <div class="stat-item">
+                                <span id="stat-routes-count" class="stat-number">0</span>
+                                <span class="stat-label">Routes</span>
                             </div>
-                            
-                            <!-- Upload Actions -->
-                            <div id="upload-actions" class="upload-actions">
-                                <label for="gpx-file-input" id="upload-more-btn" class="btn btn-primary">
-                                    📁 Upload More GPX Files
-                                </label>
-                                <button id="clear-all-btn" class="btn btn-secondary" onclick="window.fileUploader.clearAllRoutes()">
-                                    🗑️ Clear All Routes
+                            <div class="stat-item">
+                                <span id="stat-total-distance" class="stat-number">0.0km</span>
+                                <span class="stat-label">Total Distance</span>
+                            </div>
+                            <div class="stat-item">
+                                <span id="stat-total-elevation" class="stat-number">0m</span>
+                                <span class="stat-label">Total Elevation</span>
+                            </div>
+                        </div>
+
+                        <!-- Map Container -->
+                        <div id="map-container" class="map-container" style="display: block;">
+                            <div id="route-map"></div>
+                            <div class="map-controls">
+                                <button id="map-fullscreen-btn" class="map-control-btn" onclick="window.fileUploader.toggleFullscreen()" title="Toggle Fullscreen">
+                                    📐
                                 </button>
-                                <button id="aggregate-btn" class="btn btn-secondary" onclick="window.fileUploader.showAggregationOptions()">
-                                    🔗 Aggregate Routes
+                                <button id="map-fit-btn" class="map-control-btn" onclick="window.fileUploader.fitMapToRoutes()" title="Fit All Routes">
+                                    🔍
                                 </button>
+                            </div>
+                        </div>
+
+                        <!-- View Coin Container -->
+                        <div id="viewer-3d-container" class="viewer-3d-container" style="display: none;">
+                            <div id="route-3d-viewer" style="width: 100%; height: 100%; position: relative;"></div>
+
+                            <!-- Zoom Controls - Top Left -->
+                            <div class="control-overlay control-top-left">
+                                <button id="3d-zoom-in-btn" class="control-btn" onclick="window.fileUploader.zoomIn3D()" title="Zoom In">+</button>
+                                <button id="3d-zoom-out-btn" class="control-btn" onclick="window.fileUploader.zoomOut3D()" title="Zoom Out">−</button>
                             </div>
 
-                            <!-- Drop Zone Hint -->
-                            <div id="drop-zone-hint" class="drop-zone-hint">
-                                <p>💡 Tip: You can also drag & drop GPX files anywhere on this page</p>
+                            <!-- View Controls - Top Right -->
+                            <div class="control-overlay control-top-right">
+                                <button id="3d-fit-view-btn" class="control-btn" onclick="window.fileUploader.fitToView3D()" title="Fit to View">△</button>
+                                <button id="3d-reset-view-btn" class="control-btn" onclick="window.fileUploader.resetView3D()" title="Reset View">🏠</button>
                             </div>
-                        </div>  <!-- End main-content -->
-                    </div>  <!-- End route-visualization-area -->
+
+                            <!-- Display Options - Bottom Right -->
+                            <div class="control-overlay control-bottom-right">
+                                <label class="control-checkbox">
+                                    <input type="checkbox" id="filled-area-toggle" checked
+                                           onchange="window.fileUploader.toggleFilledArea(this.checked)">
+                                    <span>Filled Areas</span>
+                                </label>
+                            </div>
+
+                            <div id="viewer-3d-status" class="viewer-3d-status">
+                                <span>Mouse: rotate • Wheel: zoom</span>
+                            </div>
+                        </div>
+
+                        <!-- Routes & Coins Lists -->
+                        <div class="list-tabs" id="list-tabs">
+                            <div class="tab-buttons" role="tablist" aria-label="Routes and saved coins">
+                                <button id="routes-tab-btn" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="routes-tab-panel" data-target="routes">
+                                    Routes
+                                </button>
+                                <button id="coins-tab-btn" class="tab-button tab-button-coins" type="button" role="tab" aria-selected="false" aria-controls="coins-tab-panel" data-target="coins">
+                                    💰 Saved Coins
+                                </button>
+                            </div>
+                            <div id="routes-tab-panel" class="tab-panel active" role="tabpanel" aria-labelledby="routes-tab-btn">
+                                <div id="route-list" class="list-panel"></div>
+                            </div>
+                            <div id="coins-tab-panel" class="tab-panel" role="tabpanel" aria-labelledby="coins-tab-btn" aria-hidden="true">
+                                <div id="coin-list" class="list-panel"></div>
+                            </div>
+                        </div>
+
+                        <!-- Upload Actions -->
+                        <div id="upload-actions" class="upload-actions">
+                            <label for="gpx-file-input" id="upload-more-btn" class="btn btn-primary">
+                                📁 Upload More GPX Files
+                            </label>
+                            <button id="clear-all-btn" class="btn btn-secondary" onclick="window.fileUploader.clearAllRoutes()">
+                                🗑️ Clear All Routes
+                            </button>
+                        </div>
+
+                        <!-- Drop Zone Hint -->
+                        <div id="drop-zone-hint" class="drop-zone-hint">
+                            <p>💡 Tip: You can also drag & drop GPX files anywhere on this page</p>
+                        </div>
+                    </section>
+
+                    <aside id="aggregation-sidebar" class="aggregation-sidebar">
+                        <h4>Coin Controls</h4>
+
+                        <div class="sidebar-group">
+                            <span class="group-label">Elevation Mode</span>
+                            <label class="radio-option">
+                                <input type="radio" name="elevation-mode" id="elevation-mode-actual" value="actual" checked>
+                                <span>Actual Elevation</span>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="elevation-mode" id="elevation-mode-cumulative" value="cumulative">
+                                <span>Cumulative Climbing</span>
+                            </label>
+                        </div>
+
+                        <div class="sidebar-group">
+                            <label for="overlay-select" class="group-label">Overlay</label>
+                            <select id="overlay-select" class="sidebar-select">
+                                <option value="real">Real Route</option>
+                                <option value="spiral.json">Spiral Overlay</option>
+                                <option value="semi-circle.json">Semi-Circle Overlay</option>
+                                <option value="sa-calobra.json">Sa Calobra Overlay</option>
+                                <option value="stelvio.json">Stelvio Overlay</option>
+                            </select>
+                        </div>
+
+                        <div class="sidebar-group">
+                            <span class="group-label">Distribution</span>
+                            <label class="radio-option">
+                                <input type="radio" name="aggregation-domain" id="domain-distance" value="distance" checked>
+                                <span>Distance Based</span>
+                            </label>
+                            <label class="radio-option radio-option-disabled">
+                                <input type="radio" name="aggregation-domain" id="domain-time" value="time" disabled>
+                                <span>Time Based</span>
+                            </label>
+                            <p class="helper-text">Time distribution unlocks with a fictional overlay.</p>
+                        </div>
+
+                        <div class="sidebar-actions">
+                            <button id="save-coin-btn" class="btn btn-primary" type="button" disabled>💾 Save Coin</button>
+                            <button id="download-coin-btn" class="btn btn-secondary" type="button" disabled>⬇️ Download My Coin</button>
+                            <button id="clear-coin-btn" class="btn btn-secondary" type="button" disabled>✖️ Clear Coin</button>
+                        </div>
+                    </aside>
+                </div>
+            </div>  <!-- End main-content -->
+        </div>  <!-- End route-visualization-area -->
                     </div>
                 </section>
             </div>

@@ -21,6 +21,8 @@ class FileUploadHandler {
         this.isShowingAggregated = false; // Track if we're showing aggregated route
         this.currentViewMode = 'map'; // 'map' or '3d'
         this.is3DInitialized = false; // Track if 3D viewer has been initialized
+        this.activeListTab = 'routes'; // 'routes' or 'coins'
+        this.activateListTab = null;
         
         // State management system
         this.stateListeners = new Set();
@@ -35,6 +37,7 @@ class FileUploadHandler {
         this.setupFileInput();
         this.setupDropZone();
         this.setupViewToggleButtons();
+        this.setupListTabs();
         await this.initializeStorage();
         
         // Set up centralized state listener
@@ -364,6 +367,9 @@ class FileUploadHandler {
         if (landingState) landingState.style.display = 'none';
         if (fileUploadSection) fileUploadSection.style.display = 'none';
         if (routeVisualizationArea) routeVisualizationArea.style.display = 'block';
+        if (typeof this.activateListTab === 'function') {
+            this.activateListTab('routes');
+        }
         
         console.log('🗺️ Routes visualization UI displayed');
     }
@@ -518,26 +524,60 @@ class FileUploadHandler {
     setupViewToggleButtons() {
         // Wait for DOM to be ready
         setTimeout(() => {
-            const mapBtn = document.getElementById('view-btn-map');
-            const viewer3DBtn = document.getElementById('view-btn-3d');
-            const controlsToggle = document.getElementById('view-btn-controls');
+            const mapBtn = document.getElementById('map-view-btn');
+            const coinBtn = document.getElementById('view-coin-btn');
 
-            // Map view button
             if (mapBtn) {
-                mapBtn.addEventListener('click', () => this.showMapView());
+                mapBtn.addEventListener('click', async () => {
+                    await this.switchViewMode('map');
+                });
             }
 
-            // 3D view button  
-            if (viewer3DBtn) {
-                viewer3DBtn.addEventListener('click', () => this.show3DView());
-            }
-
-            // 3D controls toggle
-            if (controlsToggle) {
-                controlsToggle.addEventListener('click', () => this.toggle3DControls());
+            if (coinBtn) {
+                coinBtn.addEventListener('click', async () => {
+                    await this.switchViewMode('3d');
+                });
             }
 
             console.log('🎛️ View toggle buttons initialized');
+        }, 100);
+    }
+
+    setupListTabs() {
+        setTimeout(() => {
+            const routesTabBtn = document.getElementById('routes-tab-btn');
+            const coinsTabBtn = document.getElementById('coins-tab-btn');
+            const routesPanel = document.getElementById('routes-tab-panel');
+            const coinsPanel = document.getElementById('coins-tab-panel');
+
+            if (!routesTabBtn || !coinsTabBtn || !routesPanel || !coinsPanel) {
+                console.warn('⚠️ List tabs not found during setup');
+                return;
+            }
+
+            const activateTab = (tabName) => {
+                const showRoutes = tabName === 'routes';
+
+                routesTabBtn.classList.toggle('active', showRoutes);
+                routesTabBtn.setAttribute('aria-selected', showRoutes);
+                routesPanel.classList.toggle('active', showRoutes);
+                routesPanel.setAttribute('aria-hidden', !showRoutes);
+
+                coinsTabBtn.classList.toggle('active', !showRoutes);
+                coinsTabBtn.setAttribute('aria-selected', !showRoutes);
+                coinsPanel.classList.toggle('active', !showRoutes);
+                coinsPanel.setAttribute('aria-hidden', showRoutes);
+
+                this.activeListTab = showRoutes ? 'routes' : 'coins';
+            };
+
+            routesTabBtn.addEventListener('click', () => activateTab('routes'));
+            coinsTabBtn.addEventListener('click', () => activateTab('coins'));
+
+            this.activateListTab = activateTab;
+            activateTab(this.activeListTab || 'routes');
+
+            console.log('📋 Route/Coin list tabs initialized');
         }, 100);
     }
 
@@ -1962,8 +2002,8 @@ class FileUploadHandler {
     showMapView() {
         const mapContainer = document.getElementById('map-container');
         const viewer3DContainer = document.getElementById('viewer-3d-container');
-        const mapBtn = document.querySelector('.viewer-toggle-btn:nth-child(1)');
-        const viewer3DBtn = document.querySelector('.viewer-toggle-btn:nth-child(2)');
+        const mapBtn = document.getElementById('map-view-btn');
+        const viewer3DBtn = document.getElementById('view-coin-btn');
 
         if (mapContainer && viewer3DContainer) {
             mapContainer.style.display = 'block';
@@ -1987,8 +2027,8 @@ class FileUploadHandler {
     async show3DView() {
         const mapContainer = document.getElementById('map-container');
         const viewer3DContainer = document.getElementById('viewer-3d-container');
-        const mapBtn = document.querySelector('.viewer-toggle-btn:nth-child(1)');
-        const viewer3DBtn = document.querySelector('.viewer-toggle-btn:nth-child(2)');
+        const mapBtn = document.getElementById('map-view-btn');
+        const viewer3DBtn = document.getElementById('view-coin-btn');
 
         if (mapContainer && viewer3DContainer) {
             mapContainer.style.display = 'none';
@@ -2027,7 +2067,7 @@ class FileUploadHandler {
             }
         }
 
-        console.log('🎮 Switched to 3D view');
+        console.log('🎮 Switched to View Coin');
     }
 
     // Wait for an element to be visible (has dimensions)

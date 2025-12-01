@@ -12,6 +12,7 @@
     --primary-hover: #1d4ed8;
     --secondary-color: #64748b;
     --success-color: #059669;
+    --coin-color: #f97316;
     --background: #ffffff;
     --surface: #f8fafc;
     --text-primary: #0f172a;
@@ -425,15 +426,125 @@ body {
     box-shadow: var(--shadow-lg);
 }
 
-/* Route List Sidebar */
-.route-list-panel {
+/* Aggregation Layout */
+.aggregation-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(280px, 340px);
+    gap: 2rem;
+    align-items: start;
+}
+
+.visualization-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.visualization-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.aggregation-sidebar {
     background: white;
     border: 1px solid var(--border);
     border-radius: var(--border-radius);
-    padding: 1rem;
-    margin-top: 1rem;
-    max-height: 300px;
-    overflow-y: auto;
+    padding: 1.5rem;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.aggregation-sidebar h4 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.sidebar-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.group-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.radio-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
+.radio-option input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.radio-option-disabled {
+    opacity: 0.5;
+}
+
+.radio-option-disabled input[type="radio"] {
+    cursor: not-allowed;
+}
+
+.sidebar-select {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 0.95rem;
+}
+
+.helper-text {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.sidebar-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.sidebar-actions .btn {
+    width: 100%;
+}
+
+@media (max-width: 1100px) {
+    .aggregation-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .aggregation-sidebar {
+        position: static;
+    }
+}
+
+@media (max-width: 768px) {
+    .visualization-header {
+        align-items: flex-start;
+    }
+
+    .viewer-toggle-buttons {
+        width: 100%;
+        justify-content: flex-start;
+    }
 }
 
 /* 3D Visualization */
@@ -718,12 +829,11 @@ body {
     color: var(--text-secondary);
 }
 
-/* 3D Viewer Toggle Buttons */
+/* View Toggle Buttons */
 .viewer-toggle-buttons {
     display: flex;
-    gap: 1rem;
-    justify-content: center;
-    margin-top: 1rem;
+    gap: 0.75rem;
+    justify-content: flex-start;
 }
 
 .viewer-toggle-btn {
@@ -753,6 +863,66 @@ body {
     background: var(--primary-hover);
     border-color: var(--primary-hover);
     color: white;
+}
+
+/* Routes & Coins Tabs */
+.list-tabs {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+}
+
+.tab-buttons {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+}
+
+.tab-button {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    background: transparent;
+    border: none;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+    border-bottom: 3px solid transparent;
+}
+
+.tab-button:hover {
+    color: var(--text-primary);
+}
+
+.tab-button.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+    background: rgba(37, 99, 235, 0.05);
+}
+
+.tab-button-coins {
+    color: var(--coin-color);
+}
+
+.tab-button-coins.active {
+    color: var(--coin-color);
+    border-bottom-color: var(--coin-color);
+    background: rgba(249, 115, 22, 0.1);
+}
+
+.tab-panel {
+    display: none;
+    padding: 1rem;
+}
+
+.tab-panel.active {
+    display: block;
+}
+
+.list-panel {
+    max-height: 320px;
+    overflow-y: auto;
 }
 
 /* Loading state for 3D viewer */
