@@ -3145,17 +3145,6 @@ class FileUploadHandler {
         }
     }
 
-    // 3D Viewer Control Methods
-    updateElevationExaggeration(value) {
-        if (this.viewer3D) {
-            this.viewer3D.setElevationExaggeration(parseFloat(value));
-            const valueDisplay = document.getElementById('elevation-value');
-            if (valueDisplay) {
-                valueDisplay.textContent = `${value}x`;
-            }
-        }
-    }
-
     toggleFilledArea(show) {
         if (this.viewer3D) {
             this.viewer3D.toggleFilledArea(show);

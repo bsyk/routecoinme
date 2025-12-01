@@ -15,7 +15,6 @@ class Route3DVisualization {
         
         // Visualization settings
         this.settings = {
-            elevationExaggeration: 3, // Multiply elevation by this factor
             routeWidth: 2,
             showFilledArea: true,
             showClimbingOnly: false,
@@ -175,18 +174,18 @@ class Route3DVisualization {
     // Setup scene elements (circular background) - called after routes are added
     setupScene() {
         // Calculate circle radius based on current bounding box
-        let circleRadius = 5000; // Default large radius
+        let circleRadius = 200;
         
         if (this.boundingBox.minX !== Infinity) {
             const sizeX = this.boundingBox.maxX - this.boundingBox.minX;
             const sizeZ = this.boundingBox.maxZ - this.boundingBox.minZ;
             const maxRouteSize = Math.max(sizeX, sizeZ);
             // Circle should encompass all routes with some padding
-            circleRadius = Math.max(maxRouteSize * 0.7, 2000); // 70% of route size for tight fit
+            circleRadius = Math.max(maxRouteSize * 0.90, 200); // 90% of route size for tight fit
         }
-        
-        console.log(`� Setting up circular background with radius: ${circleRadius}`);
-        
+
+        console.log(`🎨 Setting up circular background with radius: ${circleRadius}`);
+
         // Remove existing background elements
         const existingCircle = this.scene.getObjectByName('circular-ground');
         if (existingCircle) this.scene.remove(existingCircle);
@@ -485,7 +484,7 @@ class Route3DVisualization {
 
         console.log('🎮 Adding route to 3D viewer:', routeData.filename, `${routeData.points.length} points`);
 
-        const points3D = this.convertRoutePointsTo3D(routeData, this.settings.elevationExaggeration);
+        const points3D = this.convertRoutePointsTo3D(routeData);
         
         if (points3D.length === 0) {
             console.warn(`❌ No valid 3D points generated for route: ${routeData.filename}`);
@@ -626,7 +625,7 @@ class Route3DVisualization {
     }
 
     // Convert GPS points to 3D coordinates
-    convertRoutePointsTo3D(routeData, elevationExaggeration = 3) {
+    convertRoutePointsTo3D(routeData) {
         if (!routeData?.points?.length) {
             console.warn('⚠️ No points provided to convertRoutePointsTo3D');
             return [];
@@ -654,22 +653,29 @@ class Route3DVisualization {
 
         const METERS_PER_DEG_LAT = 110540;
         const METERS_PER_DEG_LON = 111320;
-        const MIN_HEIGHT = 50;
+        const MIN_HEIGHT = 50; // Minimum height above ground in 3D units
+        const { latRange, lonRange, elevationRange } = this._getRouteBounds(validPoints);
+
+        const widthMeters = lonRange * METERS_PER_DEG_LON * Math.cos(anchorLat * Math.PI / 180);
+        const depthMeters = latRange * METERS_PER_DEG_LAT;
+        const diagonal = Math.hypot(widthMeters, depthMeters);
+        const targetHeight = (diagonal / 3);
+        const scaleFactor = (elevationRange > 0) ? targetHeight / elevationRange : 1;
 
         // Convert to local coordinate system (meters from center)
         const points3D = validPoints.map((point) => {
             // Convert lat/lon to approximate meters (rough conversion)
             const x = (point.lon - anchorLon) * METERS_PER_DEG_LON * Math.cos(anchorLat * Math.PI / 180);
             const z = (anchorLat - point.lat) * METERS_PER_DEG_LAT; // Flip Z for typical coordinate system
-
-            // Ensure elevation is always above ground with minimum offset
             // Minimum 50 units above ground
-            const y = Math.max(((point.elevation ?? 0) - anchorElevation), 0) * elevationExaggeration + MIN_HEIGHT; 
+            const y = Math.max(((point.elevation ?? 0) - anchorElevation), 0) * scaleFactor + MIN_HEIGHT; 
 
             return new THREE.Vector3(x, y, z);
         }).filter(point => !isNaN(point.x) && !isNaN(point.y) && !isNaN(point.z));
 
-        console.log(`🎯 Route converted: ${validPoints.length} → ${points3D.length} points, Y range: ${Math.min(...points3D.map(p => p.y)).toFixed(0)} to ${Math.max(...points3D.map(p => p.y)).toFixed(0)}`);
+        const minY = points3D.length ? Math.min(...points3D.map(p => p.y)) : 0;
+        const maxY = points3D.length ? Math.max(...points3D.map(p => p.y)) : 0;
+        console.log(`🎯 Route converted: ${validPoints.length} → ${points3D.length} points, width: ${widthMeters.toFixed(1)}, depth: ${depthMeters.toFixed(1)}, diagonal: ${diagonal.toFixed(1)}, target max height: ${targetHeight.toFixed(1)}, Y range: ${minY.toFixed(0)} to ${maxY.toFixed(0)}`);
         
         return points3D;
     }
@@ -968,12 +974,6 @@ class Route3DVisualization {
         // Return to preferred overview position
         this.camera.position.set(9066.7, 16001.4, 38808.7);
         this.camera.lookAt(0, 0, 0);
-    }
-
-    // Toggle elevation exaggeration
-    setElevationExaggeration(factor) {
-        this.settings.elevationExaggeration = factor;
-        // Would need to regenerate all routes - for now just store the setting
     }
 
     // Toggle filled area display
