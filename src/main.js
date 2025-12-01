@@ -44,10 +44,10 @@ class RouteCoinMe {
 
         const applyLabel = (system) => {
             if (system === 'metric') {
-                button.textContent = 'Use miles + feet';
+                button.textContent = 'mi/ft';
                 button.title = 'Switch to imperial units (miles and feet)';
             } else {
-                button.textContent = 'Use km + meters';
+                button.textContent = 'km/m';
                 button.title = 'Switch to metric units (kilometers and meters)';
             }
         };
