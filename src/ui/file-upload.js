@@ -41,6 +41,7 @@ class FileUploadHandler {
         this.handleSidebarEscape = this.handleSidebarEscape.bind(this);
         this.sidebarDrawerResizeHandler = null;
         this.wasUsingSidebarDrawer = null;
+        this.baseViewerHeights = { map: 320, viewer3d: 360 };
         
         // State management system
         this.stateListeners = new Set();
@@ -398,6 +399,8 @@ class FileUploadHandler {
             const targetTab = this.activeListTab || 'routes';
             this.activateListTab(targetTab);
         }
+
+        requestAnimationFrame(() => this.alignSidebarWithViewer());
         
         console.log('🗺️ Routes visualization UI displayed');
     }
@@ -418,8 +421,7 @@ class FileUploadHandler {
                 
                 // Only add routes if we have them and they're selected
                 this.addSelectedRoutesToMap();
-            } else {
-                console.error('❌ Failed to initialize map visualization');
+                requestAnimationFrame(() => this.alignSidebarWithViewer());
             }
         } else {
             console.log('🗺️ Map already initialized, adding selected routes');
@@ -673,6 +675,7 @@ class FileUploadHandler {
             this.updateDomainControlState();
             this.updateCoinActionButtons();
             this.updateSidebarControlsState();
+            this.alignSidebarWithViewer();
         }, 100);
     }
 
@@ -712,11 +715,13 @@ class FileUploadHandler {
 
         this.sidebarDrawerResizeHandler = () => {
             this.updateSidebarAccessibility();
+            this.alignSidebarWithViewer();
         };
 
         window.addEventListener('resize', this.sidebarDrawerResizeHandler);
 
         this.updateSidebarAccessibility();
+        this.alignSidebarWithViewer();
     }
 
     shouldUseSidebarDrawer() {
@@ -824,7 +829,104 @@ class FileUploadHandler {
                     }
                 }
             }
+
+            this.alignSidebarWithViewer();
         });
+    }
+
+    alignSidebarWithViewer() {
+        const layout = document.querySelector('.aggregation-layout');
+        const sidebar = this.sidebarElements?.sidebar || document.getElementById('aggregation-sidebar');
+
+        if (!layout || !sidebar) {
+            return;
+        }
+
+        const mapContainer = document.getElementById('map-container');
+        const viewer3DContainer = document.getElementById('viewer-3d-container');
+        const usingDrawer = this.shouldUseSidebarDrawer();
+
+        if (usingDrawer) {
+            sidebar.style.marginTop = '';
+            this.resetViewerHeights(mapContainer, viewer3DContainer);
+            return;
+        }
+
+        const getVisibleContainer = (element) => {
+            if (!element) {
+                return false;
+            }
+            return window.getComputedStyle(element).display !== 'none';
+        };
+
+        let target = null;
+        let inactiveViewer = null;
+
+        const preferredViewer = this.currentViewMode === '3d' ? viewer3DContainer : mapContainer;
+        if (preferredViewer && getVisibleContainer(preferredViewer)) {
+            target = preferredViewer;
+            inactiveViewer = preferredViewer === mapContainer ? viewer3DContainer : mapContainer;
+        } else if (mapContainer && getVisibleContainer(mapContainer)) {
+            target = mapContainer;
+            inactiveViewer = viewer3DContainer;
+        } else if (viewer3DContainer && getVisibleContainer(viewer3DContainer)) {
+            target = viewer3DContainer;
+            inactiveViewer = mapContainer;
+        }
+
+        if (!target) {
+            sidebar.style.marginTop = '';
+            this.resetViewerHeights(mapContainer, viewer3DContainer);
+            return;
+        }
+
+        const layoutRect = layout.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+
+        if (targetRect.height === 0) {
+            sidebar.style.marginTop = '';
+            this.resetViewerHeights(mapContainer, viewer3DContainer);
+            return;
+        }
+
+        const offset = Math.max(0, targetRect.top - layoutRect.top);
+        sidebar.style.marginTop = `${offset}px`;
+
+        const baseMinHeight = target === viewer3DContainer ? this.baseViewerHeights.viewer3d : this.baseViewerHeights.map;
+
+        requestAnimationFrame(() => {
+            const sidebarRect = sidebar.getBoundingClientRect();
+            const viewerRect = target.getBoundingClientRect();
+            const desiredHeight = Math.max(baseMinHeight, sidebarRect.height);
+
+            target.style.height = `${desiredHeight}px`;
+            target.style.minHeight = `${desiredHeight}px`;
+
+            const updatedRect = target.getBoundingClientRect();
+
+            if (inactiveViewer) {
+                inactiveViewer.style.removeProperty('height');
+                inactiveViewer.style.removeProperty('minHeight');
+            }
+
+            if (target === mapContainer && this.mapViz?.map) {
+                this.mapViz.map.invalidateSize();
+            }
+
+            if (target === viewer3DContainer && this.viewer3D?.isInitialized) {
+                this.viewer3D.resize(updatedRect.width, updatedRect.height);
+            }
+        });
+    }
+
+    resetViewerHeights(mapContainer, viewer3DContainer) {
+        const mapEl = mapContainer || document.getElementById('map-container');
+        const viewerEl = viewer3DContainer || document.getElementById('viewer-3d-container');
+
+        mapEl?.style.removeProperty('height');
+        mapEl?.style.removeProperty('minHeight');
+        viewerEl?.style.removeProperty('height');
+        viewerEl?.style.removeProperty('minHeight');
     }
 
     updateDomainControlState() {
@@ -926,6 +1028,8 @@ class FileUploadHandler {
                 }
             }
         });
+
+        requestAnimationFrame(() => this.alignSidebarWithViewer());
     }
 
     applyAggregationOptionsToControls(options) {
@@ -2868,6 +2972,8 @@ class FileUploadHandler {
             const statsType = this.isShowingAggregated ? 'aggregated' : 'selected individual';
             console.log(`📊 Stats updated (${statsType}): ${totalRoutes} routes, ${totalDistanceDisplay}, ${totalElevationDisplay}`);
         }
+
+        this.alignSidebarWithViewer();
     }
 
     // Get storage information for debugging
@@ -2949,6 +3055,8 @@ class FileUploadHandler {
             }, 100);
         }
 
+        requestAnimationFrame(() => this.alignSidebarWithViewer());
+
         console.log('🗺️ Switched to map view');
     }
 
@@ -2995,6 +3103,8 @@ class FileUploadHandler {
                 }
             }
         }
+
+        requestAnimationFrame(() => this.alignSidebarWithViewer());
 
         console.log('🎮 Switched to View Coin');
     }
