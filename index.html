@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/src/styles/main.css">
 </head>
 <body>
+    <input type="file" id="gpx-file-input" class="visually-hidden-input" accept=".gpx,.xml" multiple>
     <div id="app">
         <header class="header">
             <div class="container">
@@ -63,14 +64,13 @@
 
                         <!-- File Upload UI -->
                         <div id="file-upload-section" class="file-upload-section" style="display: none;">
-                            <div id="upload-area" class="upload-area">
+                            <label for="gpx-file-input" id="upload-area" class="upload-area">
                                 <div class="upload-content">
                                     <div class="upload-icon">📁</div>
-                                    <h3>Drop GPX files here or click to browse</h3>
+                                    <h3>Drop GPX files here or tap to browse</h3>
                                     <p>Upload your GPX route files to get started</p>
-                                    <input type="file" id="file-input" multiple accept=".gpx" style="display: none;">
                                 </div>
-                            </div>
+                            </label>
                         </div>
 
         <!-- Route Visualization UI -->
@@ -166,9 +166,9 @@
                             
                             <!-- Upload Actions -->
                             <div id="upload-actions" class="upload-actions">
-                                <button id="upload-more-btn" class="btn btn-primary" onclick="window.fileUploader.triggerFileUpload()">
+                                <label for="gpx-file-input" id="upload-more-btn" class="btn btn-primary">
                                     📁 Upload More GPX Files
-                                </button>
+                                </label>
                                 <button id="clear-all-btn" class="btn btn-secondary" onclick="window.fileUploader.clearAllRoutes()">
                                     🗑️ Clear All Routes
                                 </button>

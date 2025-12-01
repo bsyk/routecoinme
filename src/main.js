@@ -108,9 +108,9 @@ class RouteCoinMe {
                 <p>Upload GPX files to start aggregating and visualizing your cycling adventures</p>
                 
                 <div class="upload-actions">
-                    <button class="btn btn-primary" onclick="window.fileUploader.triggerFileUpload()">
+                    <label class="btn btn-primary" for="gpx-file-input">
                         📁 Upload GPX Files
-                    </button>
+                    </label>
                     <button class="btn btn-secondary" onclick="window.stravaAuth.authenticate()">
                         🔗 Connect Strava Instead
                     </button>

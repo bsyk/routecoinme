@@ -460,19 +460,24 @@ class FileUploadHandler {
 
     // Set up file input element
     setupFileInput() {
-        // Create hidden file input
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.id = 'gpx-file-input';
-        fileInput.accept = '.gpx,.xml';
-        fileInput.multiple = true;
-        fileInput.style.display = 'none';
-        document.body.appendChild(fileInput);
+        const fileInput = document.getElementById('gpx-file-input');
+        if (!fileInput) {
+            console.error('❌ File input element #gpx-file-input not found in DOM');
+            return;
+        }
 
         // Handle file selection
         fileInput.addEventListener('change', (event) => {
-            this.handleFileSelection(event.target.files);
+            const { files } = event.target;
+            if (!files || files.length === 0) {
+                return;
+            }
+            this.handleFileSelection(files);
+            // Reset the input so selecting the same file twice still triggers change
+            event.target.value = '';
         });
+
+        this.fileInput = fileInput;
     }
 
     // Set up drag and drop zone
@@ -666,7 +671,24 @@ class FileUploadHandler {
 
     // Trigger file upload dialog
     triggerFileUpload() {
-        const fileInput = document.getElementById('gpx-file-input');
+        const fileInput = this.fileInput || document.getElementById('gpx-file-input');
+        if (!fileInput) {
+            console.warn('⚠️ File input not found when triggering upload');
+            return;
+        }
+
+        // Focus helps some mobile browsers honor the interaction
+        try {
+            fileInput.focus({ preventScroll: true });
+        } catch (focusError) {
+            console.debug('ℹ️ File input focus suppressed:', focusError);
+        }
+
+        if (typeof fileInput.showPicker === 'function') {
+            fileInput.showPicker().catch(() => fileInput.click());
+            return;
+        }
+
         fileInput.click();
     }
 

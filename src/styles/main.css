@@ -33,6 +33,19 @@ body {
     flex-direction: column;
 }
 
+.visually-hidden-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    border: 0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
 #app {
     display: flex;
     flex-direction: column;
@@ -213,6 +226,11 @@ body {
 .demo-placeholder p {
     color: var(--text-secondary);
     margin-bottom: 2rem;
+}
+
+.upload-area {
+    display: block;
+    cursor: pointer;
 }
 
 /* Placeholder Chart */
