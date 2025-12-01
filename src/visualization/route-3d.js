@@ -21,8 +21,9 @@ class Route3DVisualization {
             showClimbingOnly: false,
             cameraDistance: 1000,
             routeColors: [
-                0x2563eb, 0xdc2626, 0x059669, 0xd97706, 
-                0x7c3aed, 0xdb2777, 0x0891b2, 0x65a30d
+                0xf7d16f, 0x2563eb, 0xdc2626,
+                0x059669, 0xd97706, 0x7c3aed, 
+                0xdb2777, 0x0891b2, 0x65a30d
             ],
             colorIndex: 0
         };
