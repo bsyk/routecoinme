@@ -743,8 +743,24 @@ class RouteManipulator {
 
     // Private helper: Generate a unique route ID
     _generateRouteId() {
-        return `route_${crypto.randomUUID()}`;
+        return `route_${this._generateUUID()}`;
     }
+
+    // Private helper: Generate UUID with fallbacks for browsers without crypto.randomUUID
+    _generateUUID() {
+    const cryptoObj = globalThis.crypto ?? globalThis.msCrypto;
+
+    // Best option: native UUIDv4
+    if (cryptoObj?.randomUUID) {
+        return cryptoObj.randomUUID();
+    }
+
+    // Minimal fallback: timestamp + random suffix
+    const ts = Date.now().toString(36);
+    const rnd = Math.random().toString(36).slice(2, 10);
+    return `${ts}-${rnd}`;
+}
+
 
 
     // Utility: Get route bounds (min/max lat/lon/elevation)
