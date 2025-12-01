@@ -32,6 +32,9 @@ class FileUploadHandler {
         };
         this.isAggregating = false;
         this.pendingAggregation = null;
+        this.previousAggregationOptions = null;
+        this.lastRouteSelectionBeforeCoin = null;
+        this.suppressOptionEvents = false;
         
         // State management system
         this.stateListeners = new Set();
@@ -61,6 +64,7 @@ class FileUploadHandler {
         this.showInitialUIState();
         
         await this.loadStoredRoutes();
+        await this.loadStoredCoins();
     }
 
     // Add state change listeners
@@ -603,6 +607,9 @@ class FileUploadHandler {
             const elevationRadios = document.querySelectorAll('input[name="elevation-mode"]');
             elevationRadios.forEach(radio => {
                 radio.addEventListener('change', (event) => {
+                    if (this.suppressOptionEvents) {
+                        return;
+                    }
                     if (event.target.checked) {
                         this.aggregationOptions.elevationMode = event.target.value;
                         this.onAggregationOptionsChanged('elevation-mode');
@@ -614,6 +621,9 @@ class FileUploadHandler {
             if (overlaySelect) {
                 overlaySelect.value = this.aggregationOptions.overlay;
                 overlaySelect.addEventListener('change', (event) => {
+                    if (this.suppressOptionEvents) {
+                        return;
+                    }
                     this.aggregationOptions.overlay = event.target.value;
                     this.updateDomainControlState();
                     this.onAggregationOptionsChanged('overlay');
@@ -623,6 +633,9 @@ class FileUploadHandler {
             const domainRadios = document.querySelectorAll('input[name="aggregation-domain"]');
             domainRadios.forEach(radio => {
                 radio.addEventListener('change', (event) => {
+                    if (this.suppressOptionEvents) {
+                        return;
+                    }
                     if (event.target.checked) {
                         this.aggregationOptions.domain = event.target.value;
                         this.onAggregationOptionsChanged('aggregation-domain');
@@ -647,6 +660,7 @@ class FileUploadHandler {
 
             this.updateDomainControlState();
             this.updateCoinActionButtons();
+            this.updateSidebarControlsState();
         }, 100);
     }
 
@@ -656,16 +670,19 @@ class FileUploadHandler {
         const timeRadio = document.getElementById('domain-time');
         const distanceRadio = document.getElementById('domain-distance');
         const timeRadioLabel = timeRadio?.closest('.radio-option');
+        const controlsLocked = Boolean(this.activeCoin);
 
         if (timeRadio) {
-            timeRadio.disabled = !isFictional;
+            const shouldDisableTime = controlsLocked || !isFictional;
+            timeRadio.disabled = shouldDisableTime;
             if (!isFictional) {
                 timeRadio.checked = false;
             }
         }
 
         if (timeRadioLabel) {
-            timeRadioLabel.classList.toggle('radio-option-disabled', !isFictional);
+            const shouldDisableTime = controlsLocked || !isFictional;
+            timeRadioLabel.classList.toggle('radio-option-disabled', shouldDisableTime);
         }
 
         if (!isFictional) {
@@ -674,6 +691,63 @@ class FileUploadHandler {
                 distanceRadio.checked = true;
             }
         }
+    }
+
+    updateSidebarControlsState() {
+        const controlsLocked = Boolean(this.activeCoin);
+
+        const overlaySelect = document.getElementById('overlay-select');
+        if (overlaySelect) {
+            overlaySelect.disabled = controlsLocked;
+        }
+
+        const elevationRadios = document.querySelectorAll('input[name="elevation-mode"]');
+        elevationRadios.forEach(radio => {
+            radio.disabled = controlsLocked;
+        });
+
+        const domainRadios = document.querySelectorAll('input[name="aggregation-domain"]');
+        const overlayIsFictional = this.aggregationOptions.overlay && this.aggregationOptions.overlay !== 'real';
+        domainRadios.forEach(radio => {
+            if (radio.value === 'time') {
+                radio.disabled = controlsLocked || !overlayIsFictional;
+            } else {
+                radio.disabled = controlsLocked;
+            }
+        });
+    }
+
+    applyAggregationOptionsToControls(options) {
+        this.suppressOptionEvents = true;
+        try {
+            const elevationActual = document.getElementById('elevation-mode-actual');
+            const elevationCumulative = document.getElementById('elevation-mode-cumulative');
+            if (elevationActual) {
+                elevationActual.checked = options.elevationMode === 'actual';
+            }
+            if (elevationCumulative) {
+                elevationCumulative.checked = options.elevationMode === 'cumulative';
+            }
+
+            const overlaySelect = document.getElementById('overlay-select');
+            if (overlaySelect) {
+                overlaySelect.value = options.overlay;
+            }
+
+            const distanceRadio = document.getElementById('domain-distance');
+            const timeRadio = document.getElementById('domain-time');
+            if (distanceRadio) {
+                distanceRadio.checked = options.domain === 'distance';
+            }
+            if (timeRadio) {
+                timeRadio.checked = options.domain === 'time';
+            }
+        } finally {
+            this.suppressOptionEvents = false;
+        }
+
+        this.updateDomainControlState();
+        this.updateSidebarControlsState();
     }
 
     updateCoinActionButtons() {
@@ -702,8 +776,13 @@ class FileUploadHandler {
     }
 
     onAggregationOptionsChanged(reason) {
+        if (this.activeCoin) {
+            return;
+        }
+
         console.log(`⚙️ Aggregation option changed: ${reason}`, this.aggregationOptions);
         this.updateCoinActionButtons();
+        this.updateSidebarControlsState();
         this.refreshAggregatedRoute({ reason }).catch(error => {
             console.error('❌ Failed to refresh aggregated route after option change:', error);
             this.showNotification('Failed to update coin view. Check console for details.', 'error');
@@ -779,6 +858,31 @@ class FileUploadHandler {
     // Generate unique route ID
     generateRouteId() {
         return this.routeManipulator._generateRouteId();
+    }
+
+    generateCoinId() {
+        if (window.crypto?.randomUUID) {
+            return `coin-${window.crypto.randomUUID()}`;
+        }
+        const randomPart = Math.floor(Math.random() * 1_000_000);
+        return `coin-${Date.now()}-${randomPart}`;
+    }
+
+    cloneRouteData(route) {
+        if (!route) {
+            return null;
+        }
+
+        if (typeof structuredClone === 'function') {
+            return structuredClone(route);
+        }
+
+        try {
+            return JSON.parse(JSON.stringify(route));
+        } catch (error) {
+            console.warn('⚠️ Failed to deep-clone route, returning original reference');
+            return route;
+        }
     }
 
     // Show loading state in UI
@@ -1129,6 +1233,117 @@ class FileUploadHandler {
         });
     }
 
+    getOverlayDisplayName(overlayKey) {
+        if (!overlayKey || overlayKey === 'real') {
+            return 'Real Route';
+        }
+
+        const base = overlayKey.replace(/\.json$/i, '');
+        return base
+            .split(/[-_]/)
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ');
+    }
+
+    formatTimestampForDisplay(isoString) {
+        if (!isoString) {
+            return 'Unknown';
+        }
+
+        const date = new Date(isoString);
+        if (Number.isNaN(date.getTime())) {
+            return 'Unknown';
+        }
+
+        return date.toLocaleString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    getDefaultCoinName() {
+        const sourceRoutes = this.aggregatedRoute?.metadata?.coinSourceRoutes || [];
+
+        if (sourceRoutes.length === 1) {
+            const filename = sourceRoutes[0].filename || 'Route';
+            return filename.replace(/\.gpx$/i, '');
+        }
+
+        const selectedRoutes = this.getSelectedRoutesSorted();
+        if (selectedRoutes.length === 1) {
+            const filename = selectedRoutes[0].filename || 'Route';
+            return filename.replace(/\.gpx$/i, '');
+        }
+
+        const now = new Date();
+        const iso = now.toISOString();
+        const datePart = iso.slice(0, 10);
+        const timePart = iso.slice(11, 16);
+        return `Coin - ${datePart} ${timePart}`;
+    }
+
+    promptForCoinName(defaultName) {
+        return window.prompt('Name your coin', defaultName ?? '');
+    }
+
+    createCoinRecord(name) {
+        if (!this.aggregatedRoute) {
+            throw new Error('Cannot create coin without aggregated route');
+        }
+
+        const coinId = this.generateCoinId();
+        const routeClone = this.cloneRouteData(this.aggregatedRoute);
+
+        if (!routeClone.id) {
+            routeClone.id = this.generateRouteId();
+        }
+
+        routeClone.metadata = {
+            ...(routeClone.metadata || {}),
+            coinId,
+            coinName: name,
+            coinOptions: { ...this.aggregationOptions }
+        };
+
+        const createdAt = new Date().toISOString();
+
+        return {
+            id: coinId,
+            name,
+            createdAt,
+            type: 'coin',
+            options: { ...this.aggregationOptions },
+            route: routeClone,
+            stats: {
+                distance: routeClone.distance,
+                elevationGain: routeClone.elevationGain,
+                elevationLoss: routeClone.elevationLoss,
+                duration: routeClone.duration
+            },
+            sourceRoutes: routeClone.metadata?.coinSourceRoutes || []
+        };
+    }
+
+    async saveCoinToStorage(coinRecord) {
+        if (!this.storageManager || typeof this.storageManager.saveCoin !== 'function') {
+            console.warn('⚠️ Coin storage not available; coin will persist for this session only');
+            return;
+        }
+
+        await this.storageManager.saveCoin(coinRecord);
+    }
+
+    async deleteCoinFromStorage(coinId) {
+        if (!this.storageManager || typeof this.storageManager.deleteCoin !== 'function') {
+            return;
+        }
+
+        await this.storageManager.deleteCoin(coinId);
+    }
+
     getTimeAggregationParameters(routes) {
         const allTimestamps = routes.flatMap(route =>
             route.points
@@ -1250,7 +1465,7 @@ class FileUploadHandler {
         }
     }
 
-    handleSaveCoinClick() {
+    async handleSaveCoinClick() {
         if (this.activeCoin) {
             this.showNotification('Clear the active coin before saving a new one.', 'info');
             return;
@@ -1261,19 +1476,57 @@ class FileUploadHandler {
             return;
         }
 
-        console.log('💾 Save Coin requested (implementation pending)');
-        this.showNotification('Save Coin will be available in an upcoming step.', 'info');
+        const defaultName = this.getDefaultCoinName();
+        const enteredName = this.promptForCoinName(defaultName);
+
+        if (enteredName === null) {
+            this.showNotification('Coin save cancelled.', 'info');
+            return;
+        }
+
+        const trimmedName = enteredName.trim();
+        if (!trimmedName) {
+            this.showNotification('Please enter a name for your coin.', 'warning');
+            return;
+        }
+
+        let coinRecord;
+        try {
+            coinRecord = this.createCoinRecord(trimmedName);
+        } catch (error) {
+            console.error('❌ Failed to prepare coin for saving:', error);
+            this.showNotification('Failed to prepare coin for saving. Check console for details.', 'error');
+            return;
+        }
+
+        this.savedCoins.unshift(coinRecord);
+        this.updateCoinList();
+
+        if (typeof this.activateListTab === 'function') {
+            this.activateListTab('coins');
+        }
+
+        try {
+            await this.saveCoinToStorage(coinRecord);
+            this.showNotification(`💾 Saved coin "${coinRecord.name}"`, 'success');
+        } catch (error) {
+            console.error('❌ Failed to persist coin:', error);
+            this.showNotification('Coin saved for this session, but persistent storage failed.', 'warning');
+        }
     }
 
     handleDownloadCoinClick() {
-        const routeToDownload = this.activeCoin?.route || this.aggregatedRoute;
+        if (this.activeCoin) {
+            this.downloadSavedCoin(this.activeCoin.id);
+            return;
+        }
 
-        if (!routeToDownload) {
+        if (!this.aggregatedRoute) {
             this.showNotification('Create or load a coin before downloading.', 'warning');
             return;
         }
 
-        this.downloadRoute(routeToDownload.id);
+        this.downloadRoute(this.aggregatedRoute.id);
     }
 
     handleClearCoinClick() {
@@ -1281,12 +1534,44 @@ class FileUploadHandler {
             return;
         }
 
-        this.activeCoin = null;
-        this.isShowingAggregated = false;
+        const hadActiveCoin = Boolean(this.activeCoin);
 
-        this.showMapView();
-        this.notifyStateChange('selected-routes-changed', { reason: 'coin-cleared' });
+        if (hadActiveCoin) {
+            this.activeCoin = null;
+            this.aggregatedRoute = null;
+            this.isShowingAggregated = false;
+
+            if (this.previousAggregationOptions) {
+                this.aggregationOptions = { ...this.previousAggregationOptions };
+            }
+
+            this.applyAggregationOptionsToControls(this.aggregationOptions);
+
+            if (this.lastRouteSelectionBeforeCoin) {
+                this.selectedRoutes = new Set(this.lastRouteSelectionBeforeCoin);
+            }
+
+            this.previousAggregationOptions = null;
+            this.lastRouteSelectionBeforeCoin = null;
+
+            if (typeof this.activateListTab === 'function') {
+                this.activateListTab('routes');
+            }
+        } else {
+            this.isShowingAggregated = false;
+            this.aggregatedRoute = null;
+        }
+
+        this.updateSidebarControlsState();
         this.updateCoinActionButtons();
+        this.updateCoinList();
+        this.showMapView();
+
+        this.notifyStateChange('selected-routes-changed', { reason: 'coin-cleared' });
+
+        if (hadActiveCoin) {
+            this.showNotification('Cleared active coin.', 'info');
+        }
     }
 
     // Create distance-based aggregation (existing logic with elevation mode support)
@@ -1566,6 +1851,9 @@ class FileUploadHandler {
         this.aggregatedRoute = null;
         this.selectedRoutes.clear();
         this.isShowingAggregated = false;
+        this.activeCoin = null;
+        this.previousAggregationOptions = null;
+        this.lastRouteSelectionBeforeCoin = null;
         
         // Clear from storage
         try {
@@ -1594,7 +1882,10 @@ class FileUploadHandler {
         
         // Return to initial state
         this.showInitialUIState();
+        this.applyAggregationOptionsToControls(this.aggregationOptions);
+        this.updateSidebarControlsState();
         this.updateCoinActionButtons();
+        this.updateCoinList();
         
         console.log('✅ All routes cleared');
     }
@@ -1632,6 +1923,29 @@ class FileUploadHandler {
         } catch (error) {
             console.error('❌ Failed to load stored routes:', error);
             this.uploadedRoutes = [];
+        }
+    }
+
+    async loadStoredCoins() {
+        try {
+            console.log('🪙 Loading saved coins...');
+
+            if (this.storageManager && typeof this.storageManager.loadCoins === 'function') {
+                const coins = await this.storageManager.loadCoins();
+                this.savedCoins = (coins || []).sort((a, b) => {
+                    const dateA = new Date(a.createdAt || 0).getTime();
+                    const dateB = new Date(b.createdAt || 0).getTime();
+                    return dateB - dateA;
+                });
+            } else {
+                this.savedCoins = [];
+            }
+
+            this.updateCoinList();
+        } catch (error) {
+            console.error('❌ Failed to load saved coins:', error);
+            this.savedCoins = [];
+            this.updateCoinList();
         }
     }
 
@@ -1868,6 +2182,150 @@ class FileUploadHandler {
         routeListContainer.innerHTML = routeItems;
     }
 
+    updateCoinList() {
+        const coinListContainer = document.getElementById('coin-list');
+        if (!coinListContainer) {
+            return;
+        }
+
+        if (!this.savedCoins || this.savedCoins.length === 0) {
+            coinListContainer.innerHTML = '<p class="empty-state">Save a coin to see it here</p>';
+            return;
+        }
+
+        const listHtml = this.savedCoins.map(coin => {
+            const distanceValue = coin.stats?.distance ?? coin.route?.distance ?? 0;
+            const elevationValue = coin.stats?.elevationGain ?? coin.route?.elevationGain ?? 0;
+            const distanceDisplay = this.formatDistance(distanceValue);
+            const elevationDisplay = this.formatElevation(elevationValue);
+            const createdAtDisplay = this.formatTimestampForDisplay(coin.createdAt);
+            const overlayDisplay = this.getOverlayDisplayName(coin.options?.overlay);
+            const elevationModeDisplay = coin.options?.elevationMode === 'cumulative' ? 'Cumulative' : 'Actual';
+            const isActive = this.activeCoin?.id === coin.id;
+            const classes = ['coin-list-item'];
+            if (isActive) {
+                classes.push('active');
+            }
+
+            const rawName = coin.name || 'Untitled Coin';
+            const safeName = this.escapeXml ? this.escapeXml(rawName) : rawName;
+
+            return `
+                <div class="${classes.join(' ')}" data-coin-id="${coin.id}" onclick="window.fileUploader.selectSavedCoin('${coin.id}')">
+                    <div class="coin-item-main">
+                        <h4 title="${safeName}">💰 ${safeName}</h4>
+                        <div class="coin-item-meta">
+                            <span>${overlayDisplay} • ${elevationModeDisplay}</span>
+                            <span>${createdAtDisplay}</span>
+                        </div>
+                        <div class="coin-item-stats">
+                            <span>📏 ${distanceDisplay}</span>
+                            <span>⛰️ ${elevationDisplay}</span>
+                        </div>
+                    </div>
+                    <div class="coin-item-actions">
+                        <button class="coin-action-btn" title="Download Coin" onclick="event.stopPropagation(); window.fileUploader.downloadSavedCoin('${coin.id}')">⬇️</button>
+                        <button class="coin-action-btn" title="Delete Coin" onclick="event.stopPropagation(); window.fileUploader.deleteSavedCoin('${coin.id}')">🗑️</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        coinListContainer.innerHTML = listHtml;
+    }
+
+    async selectSavedCoin(coinId) {
+        const coin = this.savedCoins.find(item => item.id === coinId);
+        if (!coin) {
+            this.showNotification('Saved coin not found.', 'error');
+            return;
+        }
+
+        if (this.activeCoin?.id === coinId) {
+            await this.switchViewMode('3d');
+            return;
+        }
+
+        if (typeof this.activateListTab === 'function') {
+            this.activateListTab('coins');
+        }
+
+        if (!this.activeCoin) {
+            this.previousAggregationOptions = { ...this.aggregationOptions };
+            this.lastRouteSelectionBeforeCoin = new Set(this.selectedRoutes);
+        }
+
+        this.activeCoin = coin;
+        this.aggregationOptions = { ...coin.options };
+        this.applyAggregationOptionsToControls(this.aggregationOptions);
+
+        this.selectedRoutes.clear();
+        this.isShowingAggregated = true;
+        this.aggregatedRoute = this.cloneRouteData(coin.route);
+
+        this.updateSidebarControlsState();
+        this.updateCoinActionButtons();
+        this.updateCoinList();
+        this.updateRouteList();
+        this.updateStatsDisplay();
+
+        this.notifyStateChange('selected-routes-changed', { reason: 'coin-selected', coinId });
+
+        await this.switchViewMode('3d');
+    }
+
+    async deleteSavedCoin(coinId) {
+        const coinIndex = this.savedCoins.findIndex(item => item.id === coinId);
+        if (coinIndex === -1) {
+            return;
+        }
+
+        const coin = this.savedCoins[coinIndex];
+
+        const confirmed = window.confirm(`Delete coin "${coin.name}"? This cannot be undone.`);
+        if (!confirmed) {
+            return;
+        }
+
+        this.savedCoins.splice(coinIndex, 1);
+
+        try {
+            await this.deleteCoinFromStorage(coinId);
+        } catch (error) {
+            console.error('❌ Failed to delete coin from storage:', error);
+        }
+
+        const clearingActiveCoin = this.activeCoin?.id === coinId;
+        if (clearingActiveCoin) {
+            this.handleClearCoinClick();
+        } else {
+            this.updateCoinList();
+        }
+
+        this.showNotification(`🗑️ Deleted coin "${coin.name}"`, 'info');
+    }
+
+    downloadSavedCoin(coinId) {
+        const coin = this.savedCoins.find(item => item.id === coinId);
+        if (!coin) {
+            this.showNotification('Saved coin not found.', 'error');
+            return;
+        }
+
+        try {
+            const rawName = coin.name || 'coin';
+            const filenameBase = rawName.replace(/[^a-z0-9\-_. ]/gi, '_').trim() || 'coin';
+            const filename = `${filenameBase}.gpx`;
+            const routeForDownload = this.cloneRouteData(coin.route);
+            const gpxContent = this.generateGPXContent(routeForDownload);
+            this.downloadFile(gpxContent, filename, 'application/gpx+xml');
+            this.showNotification(`📥 Downloaded coin "${rawName}"`, 'success');
+        } catch (error) {
+            console.error('❌ Failed to download coin:', error);
+            this.showNotification('Failed to download coin. Check console for details.', 'error');
+        }
+    }
+
     // Truncate filename helper
     truncateFilename(filename, maxLength = 30) {
         if (!filename || filename.length <= maxLength) {
@@ -1925,6 +2383,14 @@ class FileUploadHandler {
             routeToDownload = this.uploadedRoutes.find(route => route.id === routeId);
             if (routeToDownload) {
                 filename = `${routeToDownload.filename.replace(/\.gpx$/i, '').replace(/[^a-z0-9]/gi, '_')}.gpx`;
+            }
+        }
+
+        if (!routeToDownload) {
+            const coinMatch = this.savedCoins.find(coin => coin.route?.id === routeId);
+            if (coinMatch) {
+                routeToDownload = coinMatch.route;
+                filename = `${coinMatch.name.replace(/[^a-z0-9\-_. ]/gi, '_').trim() || 'coin'}.gpx`;
             }
         }
 
