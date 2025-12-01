@@ -389,7 +389,8 @@ class FileUploadHandler {
         if (fileUploadSection) fileUploadSection.style.display = 'none';
         if (routeVisualizationArea) routeVisualizationArea.style.display = 'block';
         if (typeof this.activateListTab === 'function') {
-            this.activateListTab('routes');
+            const targetTab = this.activeListTab || 'routes';
+            this.activateListTab(targetTab);
         }
         
         console.log('🗺️ Routes visualization UI displayed');
@@ -578,6 +579,10 @@ class FileUploadHandler {
 
             const activateTab = (tabName) => {
                 const showRoutes = tabName === 'routes';
+
+                if (showRoutes && this.activeCoin) {
+                    this.handleClearCoinClick();
+                }
 
                 routesTabBtn.classList.toggle('active', showRoutes);
                 routesTabBtn.setAttribute('aria-selected', showRoutes);
