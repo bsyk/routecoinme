@@ -14,7 +14,12 @@
         <header class="header">
             <div class="container">
                 <h1 class="logo">RouteCoinMe</h1>
-                <nav class="nav">
+                <button id="nav-toggle" class="nav-toggle" type="button" aria-controls="primary-nav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="nav-toggle-bar"></span>
+                    <span class="nav-toggle-bar"></span>
+                    <span class="nav-toggle-bar"></span>
+                </button>
+                <nav id="primary-nav" class="nav">
                     <button id="unit-toggle-btn" class="btn btn-secondary" type="button">Use miles + feet</button>
                     <button id="auth-btn" class="btn btn-primary">Connect with Strava</button>
                 </nav>
@@ -91,13 +96,18 @@
                     <section class="visualization-column">
                         <div class="visualization-header">
                             <h3>📊 GPX Routes Loaded</h3>
-                            <div id="viewer-toggle-buttons" class="viewer-toggle-buttons">
-                                <button id="map-view-btn" class="viewer-toggle-btn active" type="button">
-                                    🗺️ Map View
+                            <div class="visualization-header-actions">
+                                <button id="sidebar-toggle" class="sidebar-toggle-btn" type="button" aria-controls="aggregation-sidebar" aria-expanded="false">
+                                    ⚙️ Coin Controls
                                 </button>
-                                <button id="view-coin-btn" class="viewer-toggle-btn" type="button">
-                                    🪙 View Coin
-                                </button>
+                                <div id="viewer-toggle-buttons" class="viewer-toggle-buttons">
+                                    <button id="map-view-btn" class="viewer-toggle-btn active" type="button">
+                                        🗺️ Map View
+                                    </button>
+                                    <button id="view-coin-btn" class="viewer-toggle-btn" type="button">
+                                        🪙 View Coin
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -194,7 +204,8 @@
                         </div>
                     </section>
 
-                    <aside id="aggregation-sidebar" class="aggregation-sidebar">
+                    <aside id="aggregation-sidebar" class="aggregation-sidebar" aria-hidden="false">
+                        <button id="sidebar-close-btn" class="sidebar-close-btn" type="button" aria-label="Close coin controls">×</button>
                         <h4>Coin Controls</h4>
 
                         <div class="sidebar-group">
@@ -240,6 +251,7 @@
                             <button id="clear-coin-btn" class="btn btn-secondary" type="button" disabled>✖️ Clear Coin</button>
                         </div>
                     </aside>
+                    <div id="sidebar-overlay" class="sidebar-overlay" hidden></div>
                 </div>
             </div>  <!-- End main-content -->
         </div>  <!-- End route-visualization-area -->
