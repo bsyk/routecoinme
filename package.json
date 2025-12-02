@@ -11,7 +11,8 @@
     "tail": "wrangler tail routecoinme",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "clean": "rm -rf dist .wrangler"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.15.3",

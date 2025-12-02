@@ -14,12 +14,14 @@ export default defineConfig({
     open: true,
     host: true
   },
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    sourcemap: true
+  },
   environments: {
     client: {
       build: {
-        outDir: 'dist',
-        assetsDir: 'assets',
-        sourcemap: true,
         rollupOptions: {
           input: {
             main: resolve(__dirname, 'index.html'),
