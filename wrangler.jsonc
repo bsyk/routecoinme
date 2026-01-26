@@ -27,8 +27,8 @@
   // The Worker will be invoked for any non-navigation request that does not match a static asset.
   "main": "workers/strava-api.js",
 
-  // Restrict a request to 15s of CPU time (does not include waiting on external fetches)
+  // Restrict a request to 30s of CPU time (does not include waiting on external fetches)
   "limits": {
-    "cpu_ms": 15000
+    "cpu_ms": 30000
   }
 }
