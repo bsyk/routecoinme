@@ -270,13 +270,13 @@ class FileUploadHandler {
     // UNIFIED HANDLER: Handle any change to what routes are selected/visible
     handleSelectedRoutesChanged(data) {
         console.log('🔄 Selected routes changed - redrawing all visualizations');
-        
+
         // Ensure we're showing the routes UI
         this.showRoutesUI();
 
         // Clear ALL routes from visualizations first
         this.clearAllVisualizationsRoutes();
-        
+
         // Add routes that should be visible
         if (this.isShowingAggregated && this.aggregatedRoute) {
             // Show only aggregated route
@@ -292,13 +292,16 @@ class FileUploadHandler {
                 }
             });
         }
-        
+
         // Update UI elements
         this.updateRouteList();
         this.updateStatsDisplay();
         this.updateCoinActionButtons();
 
-        if (!this.activeCoin) {
+        // Don't auto-aggregate when loading a year coin (it's already a complete aggregated route)
+        const isYearCoinLoad = data?.reason === 'year-coin-loaded';
+
+        if (!this.activeCoin && !isYearCoinLoad) {
             this.refreshAggregatedRoute({ reason: 'selection-change' }).catch(error => {
                 console.error('❌ Failed to refresh aggregated route after selection change:', error);
             });
@@ -3295,9 +3298,10 @@ class FileUploadHandler {
 
         // Clear existing routes and add year coin
         this.withDeferredUpdates(() => {
-            // Clear existing selection
+            // Clear existing selection and aggregation state
             this.selectedRoutes.clear();
             this.aggregatedRoute = null;
+            this.isShowingAggregated = false; // Important: Year Coin is a single route, not aggregated
 
             // Add year coin route
             this.uploadedRoutes = [route];

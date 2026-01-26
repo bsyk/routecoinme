@@ -799,7 +799,10 @@ async function createYearCoin(authToken, searchParams) {
         console.log(`🔄 Resampling to 100,000 points...`);
         const resampledRoute = resampleRoute(aggregatedRoute, 100000);
 
-        console.log(`✅ Year Coin created successfully: ${resampledRoute.points.length} points, ${resampledRoute.distance.toFixed(1)}km`);
+        console.log(`✅ Year Coin created successfully:`);
+        console.log(`   Points: ${resampledRoute.points.length}`);
+        console.log(`   Distance: ${resampledRoute.distance.toFixed(2)}km`);
+        console.log(`   Elevation Gain: ${resampledRoute.elevationGain.toFixed(0)}m`);
 
         return new Response(JSON.stringify({
             success: true,
@@ -944,16 +947,17 @@ function connectTwoRoutesWithAnchor(firstRoute, secondRoute, anchorPoint) {
         ...secondRoute.points
     ];
 
-    // Calculate distance of the fictional connection line
+    // Calculate distance of the fictional connection line (for logging only - not added to total)
     const connectionDistance = calculateDistance(firstRouteEnd, anchorPoint);
-    console.log(`📏 Fictional return line: ${connectionDistance.toFixed(1)}km`);
+    console.log(`📏 Fictional return line: ${connectionDistance.toFixed(1)}km (not included in total distance)`);
 
     return {
         id: firstRoute.id,
         filename: firstRoute.filename,
         name: firstRoute.name,
         points: combinedPoints,
-        distance: (firstRoute.distance || 0) + connectionDistance + (secondRoute.distance || 0),
+        // Don't include fictional connection distance in the total - only count actual riding
+        distance: (firstRoute.distance || 0) + (secondRoute.distance || 0),
         elevationGain: (firstRoute.elevationGain || 0) + (secondRoute.elevationGain || 0),
         duration: (firstRoute.duration || 0) + (secondRoute.duration || 0),
         startTime: firstRoute.startTime,
