@@ -3292,6 +3292,22 @@ class FileUploadHandler {
 
         const route = yearCoinData.route;
 
+        // Get athlete info for personalized filename
+        const athlete = window.stravaAuth?.getAthleteInfo();
+        const firstName = athlete?.firstname || 'My';
+        const year = yearCoinData.metadata.year;
+
+        // Format elevation in user's preferred units with unit suffix (e.g., "4643m" or "15234ft")
+        const elevationMeters = route.elevationGain || 0;
+        const elevationFormatted = this.formatElevation(elevationMeters, { includeUnit: true, precision: 0 });
+
+        // Create personalized filename: "John 2025 Coin 4643m.gpx"
+        const personalizedFilename = `${firstName} ${year} Coin ${elevationFormatted}.gpx`;
+        route.filename = personalizedFilename;
+        route.name = `${firstName} ${year} Coin`;
+
+        console.log(`📝 Year Coin filename: ${personalizedFilename}`);
+
         // Add the year coin as a special route
         route.id = route.id || `year_coin_${yearCoinData.metadata.year}`;
         route.uploadTime = Date.now();
