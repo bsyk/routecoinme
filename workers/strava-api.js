@@ -495,7 +495,7 @@ async function bulkImportActivities(request, authToken) {
         const streamPromises = [];
         
         let page = 1;
-        const perPage = 200; // Max allowed by Strava
+        const perPage = 20; // Max of 200 allowed by Strava, limited to reduce memory usage
 
         while (true) {
             const stravaUrl = new URL('https://www.strava.com/api/v3/athlete/activities');
@@ -766,20 +766,44 @@ async function createYearCoin(authToken, searchParams) {
             new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
         );
 
-        // Fetch streams for all activities in parallel
-        console.log(`📥 Fetching GPS data for ${allActivities.length} activities...`);
-        const routePromises = allActivities.map(activity => fetchActivityStreams(activity, authToken));
-        const routeResults = await Promise.all(routePromises);
+        // Fetch streams in batches of 10 to control memory usage
+        console.log(`📥 Fetching GPS data for ${allActivities.length} activities in batches...`);
+        const BATCH_SIZE = 10;
+        const INITIAL_DOWNSAMPLE_POINTS = 1000; // Downsample each route early to save memory
+        const routes = [];
+        const errors = [];
+        const totalBatches = Math.ceil(allActivities.length / BATCH_SIZE);
 
-        // Filter successful routes
-        const routes = routeResults
-            .filter(result => result.success)
-            .map(result => result.route);
+        for (let i = 0; i < allActivities.length; i += BATCH_SIZE) {
+            const batch = allActivities.slice(i, i + BATCH_SIZE);
+            const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+
+            console.log(`📦 Processing batch ${batchNumber}/${totalBatches} (${batch.length} activities)...`);
+
+            // Process batch concurrently
+            const batchPromises = batch.map(activity => fetchActivityStreams(activity, authToken));
+            const batchResults = await Promise.all(batchPromises);
+
+            // Downsample successful routes immediately to save memory
+            for (const result of batchResults) {
+                if (result.success) {
+                    const route = result.route;
+                    // Downsample to 1000 points to reduce memory footprint
+                    const downsampledRoute = resampleRoute(route, INITIAL_DOWNSAMPLE_POINTS);
+                    routes.push(downsampledRoute);
+                } else {
+                    errors.push(result.error);
+                }
+            }
+
+            console.log(`✅ Batch ${batchNumber}/${totalBatches} complete: ${routes.length} total routes, ${errors.length} errors`);
+        }
 
         if (routes.length === 0) {
             return new Response(JSON.stringify({
                 error: 'No GPS data found',
-                message: 'Could not fetch GPS data for any activities'
+                message: 'Could not fetch GPS data for any activities',
+                errors: errors
             }), {
                 status: 500,
                 headers: {
@@ -789,7 +813,7 @@ async function createYearCoin(authToken, searchParams) {
             });
         }
 
-        console.log(`✅ Successfully fetched GPS data for ${routes.length} activities`);
+        console.log(`✅ Successfully fetched and downsampled GPS data for ${routes.length} activities`);
 
         // Aggregate routes: recenter to first activity's center, connect end-to-end
         console.log(`🔗 Aggregating ${routes.length} routes...`);
