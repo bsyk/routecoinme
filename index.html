@@ -29,25 +29,30 @@
         <main class="main">
             <div class="container">
                 <section class="hero">
-                    <h2>Visualize Your Cumulative Climbing Adventures</h2>
-                    <p>Aggregate multiple GPS routes from Strava and see your total elevation gains in stunning 3D.</p>
+                    <h2>Create Your Route Coins</h2>
+                    <p>Transform your GPS routes into stunning 3D visualizations. Choose a coin type to get started:</p>
                     <div class="feature-grid">
-                        <div class="feature-card">
-                            <h3>📈 Elevation Aggregation</h3>
-                            <p>Combine multiple routes to see total climbing achievements over time</p>
-                        </div>
-                        <div class="feature-card">
-                            <h3>🗻 3D Visualization</h3>
-                            <p>Interactive 3D viewer with elevation emphasis and climbing-only modes</p>
-                        </div>
-                        <div class="feature-card">
-                            <h3>💾 Export & Save</h3>
-                            <p>Download aggregated routes as GPX files and manage your route library</p>
-                        </div>
-                        <div class="feature-card">
-                            <h3>🔒 Privacy First</h3>
-                            <p>All processing and storage happens locally on your device, unless you choose to connect with Strava</p>
-                        </div>
+                        <button class="feature-button" id="route-coin-btn" type="button">
+                            <div class="feature-icon">🪙</div>
+                            <h3>Route Coin</h3>
+                            <p>Visualize a single Strava Activity or GPX upload</p>
+                        </button>
+                        <button class="feature-button feature-button-disabled" id="segment-coin-btn" type="button" disabled>
+                            <div class="feature-icon">🏆</div>
+                            <h3>Segment Coin</h3>
+                            <p>Show a KOM/QOM segment from Strava</p>
+                            <span class="feature-badge">Coming Soon</span>
+                        </button>
+                        <button class="feature-button" id="year-coin-btn" type="button">
+                            <div class="feature-icon">📅</div>
+                            <h3>2025 Route Coin</h3>
+                            <p>Combine all your 2025 cycling activities into one coin</p>
+                        </button>
+                        <button class="feature-button" id="designer-coin-btn" type="button">
+                            <div class="feature-icon">🎨</div>
+                            <h3>Coin Designer</h3>
+                            <p>Advanced coin creation with route merging and overlays</p>
+                        </button>
                     </div>
                 </section>
 

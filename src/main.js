@@ -79,12 +79,151 @@ class RouteCoinMe {
     setupEventListeners() {
         // Add click handler for main demo area when not authenticated
         this.setupDemoAreaClick();
-        
+
+        // Setup feature button click handlers
+        this.setupFeatureButtons();
+
         // Log that we're ready
         document.addEventListener('DOMContentLoaded', () => {
             console.log('✅ RouteCoinMe loaded successfully');
             this.showSetupInstructions();
         });
+    }
+
+    setupFeatureButtons() {
+        // Route Coin - single activity/GPX upload
+        const routeCoinBtn = document.getElementById('route-coin-btn');
+        if (routeCoinBtn) {
+            routeCoinBtn.addEventListener('click', () => {
+                console.log('🪙 Route Coin clicked');
+                this.showUploadOptions();
+            });
+        }
+
+        // Year Coin - all 2025 cycling activities
+        const yearCoinBtn = document.getElementById('year-coin-btn');
+        if (yearCoinBtn) {
+            yearCoinBtn.addEventListener('click', () => {
+                console.log('📅 Year Coin clicked');
+                this.handleYearCoin();
+            });
+        }
+
+        // Coin Designer - existing visualizer
+        const designerBtn = document.getElementById('designer-coin-btn');
+        if (designerBtn) {
+            designerBtn.addEventListener('click', () => {
+                console.log('🎨 Coin Designer clicked');
+                this.showUploadOptions();
+            });
+        }
+    }
+
+    showUploadOptions() {
+        // Show landing state
+        const landingState = document.getElementById('landing-state');
+        const fileUploadSection = document.getElementById('file-upload-section');
+        const routeVisualizationArea = document.getElementById('route-visualization-area');
+
+        if (landingState) landingState.style.display = 'block';
+        if (fileUploadSection) fileUploadSection.style.display = 'none';
+        if (routeVisualizationArea) routeVisualizationArea.style.display = 'none';
+
+        // Check authentication status
+        const isAuthenticated = this.stravaAuth?.getCachedAuthStatus?.() ?? false;
+
+        if (isAuthenticated) {
+            // Show authenticated options (Browse Strava + Upload GPX)
+            this.stravaAuth?.showAuthenticatedFeatures();
+        } else {
+            // Show unauthenticated options (Connect Strava + Upload GPX)
+            if (landingState) {
+                landingState.innerHTML = `
+                    <h3>Upload Routes</h3>
+                    <p>Connect with Strava to import activities or upload GPX files directly.</p>
+                    <div class="landing-actions">
+                        <button class="btn btn-primary" onclick="window.stravaAuth?.authenticate()">
+                            🔗 Connect with Strava
+                        </button>
+                        <button class="btn btn-secondary" onclick="window.fileUploader?.showFileUploadUI()">
+                            📁 Upload GPX Files
+                        </button>
+                    </div>
+                `;
+            }
+        }
+    }
+
+    async handleYearCoin() {
+        // Check if user is authenticated with Strava
+        const isAuthenticated = this.stravaAuth?.getCachedAuthStatus?.() ?? false;
+
+        if (!isAuthenticated) {
+            alert('Please connect with Strava to create a Year Coin from your activities.');
+            this.stravaAuth?.authenticate();
+            return;
+        }
+
+        // Create loading notification
+        const loadingNotification = document.createElement('div');
+        loadingNotification.id = 'year-coin-loading';
+        loadingNotification.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 30px 40px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            z-index: 10000;
+            text-align: center;
+            min-width: 300px;
+        `;
+        loadingNotification.innerHTML = `
+            <div style="font-size: 3rem; margin-bottom: 1rem;">📅</div>
+            <h3 style="margin: 0 0 0.5rem 0;">Creating Your 2025 Year Coin</h3>
+            <p style="margin: 0 0 1rem 0; color: #64748b;">Fetching and aggregating your cycling activities...</p>
+            <div class="spinner" style="margin: 0 auto; width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+            <style>
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+            </style>
+        `;
+        document.body.appendChild(loadingNotification);
+
+        try {
+            console.log('📅 Fetching 2025 activities for Year Coin...');
+
+            // Call the worker endpoint
+            const response = await fetch('/api/strava/year-coin?year=2025', {
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || `Failed to create year coin: ${response.statusText}`);
+            }
+
+            const yearCoinData = await response.json();
+
+            // Remove loading notification
+            loadingNotification.remove();
+
+            // Display the year coin in the visualizer
+            await this.fileUploader?.displayYearCoin(yearCoinData);
+
+            console.log('✅ Year Coin created successfully');
+        } catch (error) {
+            console.error('❌ Year Coin creation failed:', error);
+
+            // Remove loading notification
+            loadingNotification.remove();
+
+            // Show error message
+            alert(`Failed to create Year Coin: ${error.message}`);
+        }
     }
 
     setupResponsiveNavigation() {

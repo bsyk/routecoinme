@@ -68,6 +68,9 @@ export default {
                 if (url.pathname === '/api/strava/bulk-import' && request.method === 'POST') {
                     return await bulkImportActivities(request, checkToken.authToken);
                 }
+                if (url.pathname === '/api/strava/year-coin') {
+                    return await createYearCoin(checkToken.authToken, url.searchParams);
+                }
             }
 
             // 404 for unknown paths
@@ -663,4 +666,392 @@ async function fetchActivityStreams(activity, authToken) {
             }
         };
     }
+}
+
+// Create a Year Coin by aggregating all cycling activities for a given year
+async function createYearCoin(authToken, searchParams) {
+    console.log('📅 Creating Year Coin');
+
+    try {
+        const year = searchParams.get('year') || new Date().getFullYear().toString();
+
+        // Default cycling activity types (same as Bulk Import)
+        const defaultActivityTypes = [
+            'Ride',
+            'VirtualRide',
+            'EBikeRide',
+            'GravelRide',
+            'MountainBikeRide',
+            'EMountainBikeRide'
+        ];
+
+        // Parse activity types from query params (comma-separated) or use defaults
+        const typesParam = searchParams.get('types');
+        const activityTypes = typesParam
+            ? typesParam.split(',').map(t => t.trim()).filter(Boolean)
+            : defaultActivityTypes;
+
+        // Calculate year boundaries
+        const startDate = new Date(`${year}-01-01T00:00:00Z`);
+        const endDate = new Date(`${year}-12-31T23:59:59Z`);
+
+        const afterTimestamp = Math.floor(startDate.getTime() / 1000);
+        const beforeTimestamp = Math.floor(endDate.getTime() / 1000);
+
+        console.log(`📅 Fetching activities for ${year}`);
+        console.log(`🚴 Activity types: ${activityTypes.join(', ')}`);
+        console.log(`📅 Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+
+        // Fetch all activities for the year
+        const allActivities = [];
+        let page = 1;
+        const perPage = 200;
+
+        while (true) {
+            const stravaUrl = new URL('https://www.strava.com/api/v3/athlete/activities');
+            stravaUrl.searchParams.set('after', afterTimestamp.toString());
+            stravaUrl.searchParams.set('before', beforeTimestamp.toString());
+            stravaUrl.searchParams.set('page', page.toString());
+            stravaUrl.searchParams.set('per_page', perPage.toString());
+
+            const response = await fetch(stravaUrl.toString(), {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Accept': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch activities: ${response.statusText}`);
+            }
+
+            const pageActivities = await response.json();
+
+            if (pageActivities.length === 0) {
+                break;
+            }
+
+            // Filter by activity types (check both sport_type and type for compatibility)
+            const filteredActivities = pageActivities.filter(activity =>
+                activityTypes.includes(activity.sport_type) || activityTypes.includes(activity.type)
+            );
+
+            allActivities.push(...filteredActivities);
+
+            if (pageActivities.length < perPage) {
+                break;
+            }
+
+            page++;
+        }
+
+        if (allActivities.length === 0) {
+            return new Response(JSON.stringify({
+                error: 'No activities found',
+                message: `No cycling activities found for ${year}`
+            }), {
+                status: 404,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            });
+        }
+
+        console.log(`✅ Found ${allActivities.length} cycling activities for ${year}`);
+
+        // Sort activities by date (oldest first)
+        allActivities.sort((a, b) =>
+            new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+        );
+
+        // Fetch streams for all activities in parallel
+        console.log(`📥 Fetching GPS data for ${allActivities.length} activities...`);
+        const routePromises = allActivities.map(activity => fetchActivityStreams(activity, authToken));
+        const routeResults = await Promise.all(routePromises);
+
+        // Filter successful routes
+        const routes = routeResults
+            .filter(result => result.success)
+            .map(result => result.route);
+
+        if (routes.length === 0) {
+            return new Response(JSON.stringify({
+                error: 'No GPS data found',
+                message: 'Could not fetch GPS data for any activities'
+            }), {
+                status: 500,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            });
+        }
+
+        console.log(`✅ Successfully fetched GPS data for ${routes.length} activities`);
+
+        // Aggregate routes: recenter to first activity's center, connect end-to-end
+        console.log(`🔗 Aggregating ${routes.length} routes...`);
+        const aggregatedRoute = aggregateRoutesForYearCoin(routes);
+
+        // Resample to 100,000 points
+        console.log(`🔄 Resampling to 100,000 points...`);
+        const resampledRoute = resampleRoute(aggregatedRoute, 100000);
+
+        console.log(`✅ Year Coin created successfully: ${resampledRoute.points.length} points, ${resampledRoute.distance.toFixed(1)}km`);
+
+        return new Response(JSON.stringify({
+            success: true,
+            route: resampledRoute,
+            metadata: {
+                year: year,
+                activityTypes: activityTypes,
+                totalActivities: routes.length,
+                totalDistance: resampledRoute.distance,
+                totalElevationGain: resampledRoute.elevationGain,
+                startDate: routes[0].startTime,
+                endDate: routes[routes.length - 1].startTime
+            }
+        }), {
+            status: 200,
+            headers: {
+                'Content-Type': 'application/json',
+                ...corsHeaders,
+            },
+        });
+
+    } catch (error) {
+        console.error('❌ Year Coin creation error:', error);
+        return new Response(JSON.stringify({
+            error: 'Year Coin creation error',
+            message: error.message || 'Failed to create Year Coin'
+        }), {
+            status: 500,
+            headers: {
+                'Content-Type': 'application/json',
+                ...corsHeaders,
+            },
+        });
+    }
+}
+
+// Route manipulation helpers for Year Coin
+
+function aggregateRoutesForYearCoin(routes) {
+    if (routes.length === 0) {
+        throw new Error('No routes to aggregate');
+    }
+
+    if (routes.length === 1) {
+        return { ...routes[0] };
+    }
+
+    console.log(`🎯 Getting start point of first route...`);
+    const firstRoute = routes[0];
+    const anchorPoint = firstRoute.points[0]; // Use the start point of the first route
+
+    console.log(`📍 Anchor point (start of first route): (${anchorPoint.lat.toFixed(6)}, ${anchorPoint.lon.toFixed(6)}, ${(anchorPoint.elevation || 0).toFixed(1)}m)`);
+
+    // Process all routes - anchor each route's start to the same point
+    const processedRoutes = routes.map((route, index) => {
+        console.log(`🔄 Processing route ${index + 1}/${routes.length}: ${route.name}`);
+
+        // Anchor this route's start point to the anchor point
+        const anchoredRoute = anchorRouteToPoint(route, anchorPoint);
+
+        return anchoredRoute;
+    });
+
+    // Connect routes with fictional lines back to anchor point
+    console.log(`🔗 Connecting ${processedRoutes.length} routes with return lines to anchor...`);
+    let aggregatedRoute = processedRoutes[0];
+
+    for (let i = 1; i < processedRoutes.length; i++) {
+        aggregatedRoute = connectTwoRoutesWithAnchor(aggregatedRoute, processedRoutes[i], anchorPoint);
+    }
+
+    // Update metadata
+    aggregatedRoute.filename = `${routes.length}_Routes_YearCoin.gpx`;
+    aggregatedRoute.name = `${routes.length} Routes Year Coin`;
+    aggregatedRoute.metadata = {
+        ...aggregatedRoute.metadata,
+        yearCoin: true,
+        totalRoutes: routes.length,
+        sourceRoutes: routes.map(r => ({
+            id: r.id,
+            name: r.name,
+            distance: r.distance,
+            elevationGain: r.elevationGain
+        }))
+    };
+
+    console.log(`✅ Aggregated route: ${aggregatedRoute.points.length} points, ${aggregatedRoute.distance.toFixed(1)}km`);
+
+    return aggregatedRoute;
+}
+
+function getRouteCenter(route) {
+    const lats = route.points.map(p => p.lat);
+    const lons = route.points.map(p => p.lon);
+
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLon = Math.min(...lons);
+    const maxLon = Math.max(...lons);
+
+    return {
+        lat: (minLat + maxLat) / 2,
+        lon: (minLon + maxLon) / 2,
+        elevation: route.points[0].elevation || 0
+    };
+}
+
+function anchorRouteToPoint(route, anchorPoint) {
+    // Relocate route so its start point matches the anchor point
+    const currentStartPoint = route.points[0];
+
+    const offsetLat = anchorPoint.lat - currentStartPoint.lat;
+    const offsetLon = anchorPoint.lon - currentStartPoint.lon;
+    const offsetElevation = (anchorPoint.elevation || 0) - (currentStartPoint.elevation || 0);
+
+    return {
+        ...route,
+        points: route.points.map(point => ({
+            ...point,
+            lat: point.lat + offsetLat,
+            lon: point.lon + offsetLon,
+            elevation: (point.elevation || 0) + offsetElevation
+        }))
+    };
+}
+
+function connectTwoRoutesWithAnchor(firstRoute, secondRoute, anchorPoint) {
+    const firstRouteEnd = firstRoute.points[firstRoute.points.length - 1];
+    const secondRouteStart = secondRoute.points[0]; // This should be at the anchor point
+
+    // Create a fictional straight line from the end of the first route back to the anchor point
+    // (which is also the start of the second route)
+    console.log(`🔗 Creating fictional return line from end of route back to anchor point`);
+
+    // Create interpolated points for the connecting line (excluding endpoints to avoid duplication)
+    const connectionPoints = createConnectionLine(firstRouteEnd, anchorPoint, 20);
+
+    // Combine points: firstRoute + connectionLine + secondRoute
+    const combinedPoints = [
+        ...firstRoute.points,
+        ...connectionPoints, // Middle points only (no endpoints)
+        ...secondRoute.points
+    ];
+
+    // Calculate distance of the fictional connection line
+    const connectionDistance = calculateDistance(firstRouteEnd, anchorPoint);
+    console.log(`📏 Fictional return line: ${connectionDistance.toFixed(1)}km`);
+
+    return {
+        id: firstRoute.id,
+        filename: firstRoute.filename,
+        name: firstRoute.name,
+        points: combinedPoints,
+        distance: (firstRoute.distance || 0) + connectionDistance + (secondRoute.distance || 0),
+        elevationGain: (firstRoute.elevationGain || 0) + (secondRoute.elevationGain || 0),
+        duration: (firstRoute.duration || 0) + (secondRoute.duration || 0),
+        startTime: firstRoute.startTime,
+        metadata: {
+            ...firstRoute.metadata
+        }
+    };
+}
+
+// Create a fictional straight line between two points with interpolated intermediate points
+function createConnectionLine(startPoint, endPoint, numIntermediatePoints = 20) {
+    const connectionPoints = [];
+
+    // Create intermediate points (excluding the endpoints themselves)
+    for (let i = 1; i <= numIntermediatePoints; i++) {
+        const t = i / (numIntermediatePoints + 1); // Progress from start to end (0 to 1, excluding 0 and 1)
+
+        const interpolatedPoint = {
+            lat: startPoint.lat + (endPoint.lat - startPoint.lat) * t,
+            lon: startPoint.lon + (endPoint.lon - startPoint.lon) * t,
+            elevation: (startPoint.elevation || 0) + ((endPoint.elevation || 0) - (startPoint.elevation || 0)) * t,
+            timestamp: startPoint.timestamp || endPoint.timestamp || null
+        };
+
+        connectionPoints.push(interpolatedPoint);
+    }
+
+    return connectionPoints;
+}
+
+// Calculate distance between two points using Haversine formula
+function calculateDistance(point1, point2) {
+    const R = 6371; // Earth's radius in kilometers
+    const lat1 = point1.lat * Math.PI / 180;
+    const lat2 = point2.lat * Math.PI / 180;
+    const dLat = (point2.lat - point1.lat) * Math.PI / 180;
+    const dLon = (point2.lon - point1.lon) * Math.PI / 180;
+
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1) * Math.cos(lat2) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c; // Distance in kilometers
+}
+
+function resampleRoute(route, targetPointCount) {
+    if (route.points.length === targetPointCount) {
+        return route;
+    }
+
+    console.log(`🔄 Resampling from ${route.points.length} to ${targetPointCount} points`);
+
+    const originalPoints = route.points;
+    const n = originalPoints.length;
+
+    if (n < 2) {
+        return route;
+    }
+
+    if (targetPointCount < 2) {
+        targetPointCount = 2;
+    }
+
+    const segmentCount = targetPointCount - 1;
+
+    // Generate middle points through interpolation
+    const resampledPoints = [originalPoints[0]]; // Start with first point
+
+    for (let i = 1; i < targetPointCount - 1; i++) {
+        const progress = i / segmentCount; // 0..1
+        const sourcePosition = progress * (n - 1); // fractional index
+
+        const lowerIndex = Math.floor(sourcePosition);
+        const upperIndex = Math.min(Math.ceil(sourcePosition), n - 1);
+        const t = sourcePosition - lowerIndex;
+
+        const lowerPoint = originalPoints[lowerIndex];
+        const upperPoint = originalPoints[upperIndex];
+
+        // Interpolate
+        const interpolatedPoint = {
+            lat: lowerPoint.lat + (upperPoint.lat - lowerPoint.lat) * t,
+            lon: lowerPoint.lon + (upperPoint.lon - lowerPoint.lon) * t,
+            elevation: (lowerPoint.elevation || 0) + ((upperPoint.elevation || 0) - (lowerPoint.elevation || 0)) * t,
+            timestamp: lowerPoint.timestamp || upperPoint.timestamp || null
+        };
+
+        resampledPoints.push(interpolatedPoint);
+    }
+
+    // Add last point
+    resampledPoints.push(originalPoints[n - 1]);
+
+    console.log(`✅ Resampled to ${resampledPoints.length} points`);
+
+    return {
+        ...route,
+        points: resampledPoints
+    };
 }

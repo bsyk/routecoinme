@@ -3277,6 +3277,51 @@ class FileUploadHandler {
             }
         }, duration);
     }
+
+    // Display Year Coin from Worker endpoint
+    async displayYearCoin(yearCoinData) {
+        if (!yearCoinData || !yearCoinData.route) {
+            console.error('❌ Invalid year coin data');
+            return;
+        }
+
+        console.log('📅 Displaying Year Coin:', yearCoinData.metadata);
+
+        const route = yearCoinData.route;
+
+        // Add the year coin as a special route
+        route.id = route.id || `year_coin_${yearCoinData.metadata.year}`;
+        route.uploadTime = Date.now();
+
+        // Clear existing routes and add year coin
+        this.withDeferredUpdates(() => {
+            // Clear existing selection
+            this.selectedRoutes.clear();
+            this.aggregatedRoute = null;
+
+            // Add year coin route
+            this.uploadedRoutes = [route];
+            this.selectedRoutes.add(route.id);
+        });
+
+        // Save to storage
+        await this.saveRoutesToStorage();
+
+        // Trigger visualization update through state change
+        this.notifyStateChange('selected-routes-changed', { reason: 'year-coin-loaded' });
+
+        // Switch to 3D view to show the coin
+        await this.switchViewMode('3d');
+
+        // Show success notification
+        this.showNotification(
+            `Year Coin created successfully! ${yearCoinData.metadata.totalActivities} activities, ${yearCoinData.metadata.totalDistance.toFixed(1)}km total distance`,
+            'success',
+            5000
+        );
+
+        console.log('✅ Year Coin displayed successfully');
+    }
 }
 
 export default FileUploadHandler;
