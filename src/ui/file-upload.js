@@ -2816,11 +2816,11 @@ class FileUploadHandler {
         // Find the route to download (could be aggregated or individual)
         if (routeId === this.aggregatedRoute?.id) {
             routeToDownload = this.aggregatedRoute;
-            filename = `${this.aggregatedRoute.filename.replace(/[^a-z0-9]/gi, '_')}.gpx`;
+            filename = `${this.aggregatedRoute.filename.replace(/[_.]gpx$/i, '').replace(/[^a-z0-9]/gi, '_')}.gpx`;
         } else {
             routeToDownload = this.uploadedRoutes.find(route => route.id === routeId);
             if (routeToDownload) {
-                filename = `${routeToDownload.filename.replace(/\.gpx$/i, '').replace(/[^a-z0-9]/gi, '_')}.gpx`;
+                filename = `${routeToDownload.filename.replace(/[_.]gpx$/i, '').replace(/[^a-z0-9]/gi, '_')}.gpx`;
             }
         }
 
@@ -2828,7 +2828,7 @@ class FileUploadHandler {
             const coinMatch = this.savedCoins.find(coin => coin.route?.id === routeId);
             if (coinMatch) {
                 routeToDownload = coinMatch.route;
-                filename = `${coinMatch.name.replace(/[^a-z0-9\-_. ]/gi, '_').trim() || 'coin'}.gpx`;
+                filename = `${coinMatch.name.replace(/[_.]gpx$/i, '').replace(/[^a-z0-9\-_. ]/gi, '_').trim() || 'coin'}.gpx`;
             }
         }
 
