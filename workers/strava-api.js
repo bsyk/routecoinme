@@ -795,9 +795,9 @@ async function createYearCoin(authToken, searchParams) {
         console.log(`🔗 Aggregating ${routes.length} routes...`);
         const aggregatedRoute = aggregateRoutesForYearCoin(routes);
 
-        // Resample to 100,000 points
-        console.log(`🔄 Resampling to 100,000 points...`);
-        const resampledRoute = resampleRoute(aggregatedRoute, 100000);
+        // Resample to 10,000 points
+        console.log(`🔄 Resampling to 10,000 points...`);
+        const resampledRoute = resampleRoute(aggregatedRoute, 10000);
 
         console.log(`✅ Year Coin created successfully:`);
         console.log(`   Points: ${resampledRoute.points.length}`);
