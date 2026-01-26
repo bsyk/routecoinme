@@ -1085,7 +1085,9 @@ class FileUploadHandler {
         }
 
         if (downloadBtn) {
-            downloadBtn.disabled = !hasAggregatedRoute;
+            // Enable download if we have an aggregated route OR exactly 1 selected route (like a Year Coin)
+            const hasOneSelectedRoute = this.selectedRoutes.size === 1;
+            downloadBtn.disabled = !hasAggregatedRoute && !hasOneSelectedRoute;
         }
 
         if (clearBtn) {
@@ -1858,12 +1860,20 @@ class FileUploadHandler {
             return;
         }
 
-        if (!this.aggregatedRoute) {
-            this.showNotification('Create or load a coin before downloading.', 'warning');
+        // Check for aggregatedRoute first
+        if (this.aggregatedRoute) {
+            this.downloadRoute(this.aggregatedRoute.id);
             return;
         }
 
-        this.downloadRoute(this.aggregatedRoute.id);
+        // If no aggregated route but we have exactly 1 selected route (like a Year Coin), download that
+        const selectedRoutes = this.uploadedRoutes.filter(route => this.selectedRoutes.has(route.id));
+        if (selectedRoutes.length === 1) {
+            this.downloadRoute(selectedRoutes[0].id);
+            return;
+        }
+
+        this.showNotification('Create or load a coin before downloading.', 'warning');
     }
 
     handleClearCoinClick() {
@@ -1957,7 +1967,12 @@ class FileUploadHandler {
         aggregatedRoute.duration = originalStats.duration;
         
         // Update metadata to include aggregation details
-        aggregatedRoute.filename = `Aggregated Route (${routes.length} routes) - ${elevationMode === 'actual' ? 'Distance' : 'Cumulative Climbing'}`;
+        // Use the single route's filename if only one route is being "aggregated"
+        if (routes.length === 1) {
+            aggregatedRoute.filename = routes[0].filename;
+        } else {
+            aggregatedRoute.filename = `Aggregated Route (${routes.length} routes) - ${elevationMode === 'actual' ? 'Distance' : 'Cumulative Climbing'}`;
+        }
         aggregatedRoute.metadata = {
             ...aggregatedRoute.metadata,
             name: `Aggregated Route - ${routes.map(r => r.filename).join(', ')}`,
@@ -2039,7 +2054,12 @@ class FileUploadHandler {
         aggregatedRoute.duration = originalStats.duration;
         
         // Step 6: Update metadata
-        aggregatedRoute.filename = `Aggregated Route (${routes.length} routes) - ${elevationMode === 'actual' ? 'Time-based' : 'Time-based Cumulative'}`;
+        // Use the single route's filename if only one route is being "aggregated"
+        if (routes.length === 1) {
+            aggregatedRoute.filename = routes[0].filename;
+        } else {
+            aggregatedRoute.filename = `Aggregated Route (${routes.length} routes) - ${elevationMode === 'actual' ? 'Time-based' : 'Time-based Cumulative'}`;
+        }
         aggregatedRoute.metadata = {
             ...aggregatedRoute.metadata,
             name: `Time-based Aggregated Route - ${routes.map(r => r.filename).join(', ')}`,
@@ -2114,7 +2134,12 @@ class FileUploadHandler {
         fictionalRoute.duration = originalStats.duration;
 
         // Step 7: Update metadata
-        fictionalRoute.filename = `Fictional Route (${routes.length} routes) - ${fictionalRoute?.metadata?.templateName || pathPattern} - ${distributionMode === 'time' ? 'Time' : 'Distance'} ${elevationMode === 'actual' ? 'Elevation' : 'Cumulative'}`;
+        // Use the single route's filename if only one route is being "aggregated"
+        if (routes.length === 1) {
+            fictionalRoute.filename = routes[0].filename;
+        } else {
+            fictionalRoute.filename = `Fictional Route (${routes.length} routes) - ${fictionalRoute?.metadata?.templateName || pathPattern} - ${distributionMode === 'time' ? 'Time' : 'Distance'} ${elevationMode === 'actual' ? 'Elevation' : 'Cumulative'}`;
+        }
         fictionalRoute.metadata = {
             ...fictionalRoute.metadata,
             name: `Fictional ${pathPattern} Route - ${routes.map(r => r.filename).join(', ')}`,
