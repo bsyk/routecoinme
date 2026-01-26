@@ -232,6 +232,68 @@ body {
     box-shadow: var(--shadow-lg);
 }
 
+/* Feature Buttons */
+.feature-button {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: var(--border-radius);
+    padding: 2rem 1.5rem;
+    text-align: center;
+    box-shadow: var(--shadow);
+    transition: all 0.2s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.feature-button:not(:disabled):hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--primary-color);
+    background: #fff;
+}
+
+.feature-button:not(:disabled):active {
+    transform: translateY(-2px);
+}
+
+.feature-button-disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.feature-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    line-height: 1;
+}
+
+.feature-button h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.feature-button p {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.feature-badge {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    background: var(--primary-color);
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+}
+
 .feature-card h3 {
     font-size: 1.125rem;
     font-weight: 600;
@@ -394,7 +456,7 @@ body {
     margin-top: 0.25rem;
 }
 
-.upload-actions {
+.upload-actions, .landing-actions {
     display: flex;
     gap: 1rem;
     justify-content: center;
@@ -404,7 +466,7 @@ body {
     max-width: 100%;
 }
 
-.upload-actions .btn {
+.upload-actions .btn, .landing-actions .btn {
     min-width: 160px;
 }
 
@@ -623,7 +685,7 @@ body.sidebar-open {
         padding-bottom: 0;
     }
 
-    .feature-card {
+    .feature-card, .feature-button {
         width: 100%;
         max-width: 100%;
     }
@@ -702,7 +764,7 @@ body.sidebar-open {
         gap: 1.25rem;
     }
 
-    .upload-actions .btn {
+    .upload-actions .btn, .landing-actions .btn {
         width: 100%;
     }
 
