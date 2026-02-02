@@ -854,6 +854,14 @@ class FileUploadHandler {
         const viewer3DContainer = document.getElementById('viewer-3d-container');
         const usingDrawer = this.shouldUseSidebarDrawer();
 
+        // New layout: sidebar is in viewer-sidebar-row, no margin adjustment needed
+        const viewerSidebarRow = document.querySelector('.viewer-sidebar-row');
+        if (viewerSidebarRow) {
+            sidebar.style.marginTop = '';
+            this.resetViewerHeights(mapContainer, viewer3DContainer);
+            return;
+        }
+
         if (usingDrawer) {
             sidebar.style.marginTop = '';
             this.resetViewerHeights(mapContainer, viewer3DContainer);
@@ -1822,7 +1830,7 @@ class FileUploadHandler {
         }
 
         if (!this.aggregatedRoute) {
-            this.showNotification('Select routes and choose View Coin before saving.', 'warning');
+            this.showNotification('Select routes and choose Coin View before saving.', 'warning');
             return;
         }
 
@@ -3302,7 +3310,7 @@ class FileUploadHandler {
 
         requestAnimationFrame(() => this.alignSidebarWithViewer());
 
-        console.log('🎮 Switched to View Coin');
+        console.log('🎮 Switched to Coin View');
     }
 
     // Wait for an element to be visible (has dimensions)
