@@ -98,120 +98,101 @@
             <!-- Main Content (hidden during loading) -->
             <div id="main-content">
                 <div class="aggregation-layout">
-                    <section class="visualization-column">
-                        <div class="visualization-header">
-                            <h3>📊 GPX Routes Loaded</h3>
-                            <div class="visualization-header-actions">
-                                <button id="sidebar-toggle" class="sidebar-toggle-btn" type="button" aria-controls="aggregation-sidebar" aria-expanded="false">
-                                    ⚙️ Coin Controls
-                                </button>
-                                <div id="viewer-toggle-buttons" class="viewer-toggle-buttons">
-                                    <button id="map-view-btn" class="viewer-toggle-btn active" type="button">
-                                        🗺️ Map View
+                    <!-- Full Width Header -->
+                    <div class="visualization-header">
+                        <h3>📊 GPX Routes Loaded</h3>
+                        <div class="visualization-header-actions">
+                            <button id="sidebar-toggle" class="sidebar-toggle-btn" type="button" aria-controls="aggregation-sidebar" aria-expanded="false">
+                                ⚙️ Coin Controls
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Upload Actions -->
+                    <div id="upload-actions" class="upload-actions">
+                        <label for="gpx-file-input" id="upload-more-btn" class="btn btn-primary">
+                            📁 Upload More GPX Files
+                        </label>
+                        <button id="clear-all-btn" class="btn btn-secondary" onclick="window.fileUploader.clearAllRoutes()">
+                            🗑️ Clear All Routes
+                        </button>
+                    </div>
+
+                    <!-- Full Width Route Statistics -->
+                    <div class="route-stats">
+                        <div class="stat-item">
+                            <span id="stat-routes-count" class="stat-number">0</span>
+                            <span class="stat-label">Routes</span>
+                        </div>
+                        <div class="stat-item">
+                            <span id="stat-total-distance" class="stat-number">0.0km</span>
+                            <span class="stat-label">Total Distance</span>
+                        </div>
+                        <div class="stat-item">
+                            <span id="stat-total-elevation" class="stat-number">0m</span>
+                            <span class="stat-label">Total Elevation</span>
+                        </div>
+                    </div>
+
+                    <!-- Viewer and Sidebar Row -->
+                    <div class="viewer-sidebar-row">
+                        <div class="viewer-column">
+                            <!-- Map Container -->
+                            <div id="map-container" class="map-container" style="display: block;">
+                                <div id="route-map"></div>
+                                <div class="map-controls">
+                                    <button id="map-fullscreen-btn" class="map-control-btn" onclick="window.fileUploader.toggleFullscreen()" title="Toggle Fullscreen">
+                                        📐
                                     </button>
-                                    <button id="view-coin-btn" class="viewer-toggle-btn" type="button">
-                                        🪙 View Coin
+                                    <button id="map-fit-btn" class="map-control-btn" onclick="window.fileUploader.fitMapToRoutes()" title="Fit All Routes">
+                                        🔍
                                     </button>
+                                </div>
+                            </div>
+
+                            <!-- View Coin Container -->
+                            <div id="viewer-3d-container" class="viewer-3d-container" style="display: none;">
+                                <div id="route-3d-viewer" style="width: 100%; height: 100%; position: relative;"></div>
+
+                                <!-- Zoom Controls - Top Left -->
+                                <div class="control-overlay control-top-left">
+                                    <button id="3d-zoom-in-btn" class="control-btn" onclick="window.fileUploader.zoomIn3D()" title="Zoom In">+</button>
+                                    <button id="3d-zoom-out-btn" class="control-btn" onclick="window.fileUploader.zoomOut3D()" title="Zoom Out">−</button>
+                                </div>
+
+                                <!-- View Controls - Top Right -->
+                                <div class="control-overlay control-top-right">
+                                    <button id="3d-fit-view-btn" class="control-btn" onclick="window.fileUploader.fitToView3D()" title="Fit to View">△</button>
+                                    <button id="3d-reset-view-btn" class="control-btn" onclick="window.fileUploader.resetView3D()" title="Reset View">🏠</button>
+                                </div>
+
+                                <!-- Display Options - Bottom Right -->
+                                <div class="control-overlay control-bottom-right">
+                                    <label class="control-checkbox">
+                                        <input type="checkbox" id="filled-area-toggle" checked
+                                               onchange="window.fileUploader.toggleFilledArea(this.checked)">
+                                        <span>Filled Areas</span>
+                                    </label>
+                                </div>
+
+                                <div id="viewer-3d-status" class="viewer-3d-status">
+                                    <span>Mouse: rotate • Wheel: zoom</span>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Route Statistics -->
-                        <div class="route-stats">
-                            <div class="stat-item">
-                                <span id="stat-routes-count" class="stat-number">0</span>
-                                <span class="stat-label">Routes</span>
-                            </div>
-                            <div class="stat-item">
-                                <span id="stat-total-distance" class="stat-number">0.0km</span>
-                                <span class="stat-label">Total Distance</span>
-                            </div>
-                            <div class="stat-item">
-                                <span id="stat-total-elevation" class="stat-number">0m</span>
-                                <span class="stat-label">Total Elevation</span>
-                            </div>
-                        </div>
-
-                        <!-- Map Container -->
-                        <div id="map-container" class="map-container" style="display: block;">
-                            <div id="route-map"></div>
-                            <div class="map-controls">
-                                <button id="map-fullscreen-btn" class="map-control-btn" onclick="window.fileUploader.toggleFullscreen()" title="Toggle Fullscreen">
-                                    📐
-                                </button>
-                                <button id="map-fit-btn" class="map-control-btn" onclick="window.fileUploader.fitMapToRoutes()" title="Fit All Routes">
-                                    🔍
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- View Coin Container -->
-                        <div id="viewer-3d-container" class="viewer-3d-container" style="display: none;">
-                            <div id="route-3d-viewer" style="width: 100%; height: 100%; position: relative;"></div>
-
-                            <!-- Zoom Controls - Top Left -->
-                            <div class="control-overlay control-top-left">
-                                <button id="3d-zoom-in-btn" class="control-btn" onclick="window.fileUploader.zoomIn3D()" title="Zoom In">+</button>
-                                <button id="3d-zoom-out-btn" class="control-btn" onclick="window.fileUploader.zoomOut3D()" title="Zoom Out">−</button>
-                            </div>
-
-                            <!-- View Controls - Top Right -->
-                            <div class="control-overlay control-top-right">
-                                <button id="3d-fit-view-btn" class="control-btn" onclick="window.fileUploader.fitToView3D()" title="Fit to View">△</button>
-                                <button id="3d-reset-view-btn" class="control-btn" onclick="window.fileUploader.resetView3D()" title="Reset View">🏠</button>
-                            </div>
-
-                            <!-- Display Options - Bottom Right -->
-                            <div class="control-overlay control-bottom-right">
-                                <label class="control-checkbox">
-                                    <input type="checkbox" id="filled-area-toggle" checked
-                                           onchange="window.fileUploader.toggleFilledArea(this.checked)">
-                                    <span>Filled Areas</span>
-                                </label>
-                            </div>
-
-                            <div id="viewer-3d-status" class="viewer-3d-status">
-                                <span>Mouse: rotate • Wheel: zoom</span>
-                            </div>
-                        </div>
-
-                        <!-- Routes & Coins Lists -->
-                        <div class="list-tabs" id="list-tabs">
-                            <div class="tab-buttons" role="tablist" aria-label="Routes and saved coins">
-                                <button id="routes-tab-btn" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="routes-tab-panel" data-target="routes">
-                                    Routes
-                                </button>
-                                <button id="coins-tab-btn" class="tab-button tab-button-coins" type="button" role="tab" aria-selected="false" aria-controls="coins-tab-panel" data-target="coins">
-                                    💰 Saved Coins
-                                </button>
-                            </div>
-                            <div id="routes-tab-panel" class="tab-panel active" role="tabpanel" aria-labelledby="routes-tab-btn">
-                                <div id="route-list" class="list-panel"></div>
-                            </div>
-                            <div id="coins-tab-panel" class="tab-panel" role="tabpanel" aria-labelledby="coins-tab-btn" aria-hidden="true">
-                                <div id="coin-list" class="list-panel"></div>
-                            </div>
-                        </div>
-
-                        <!-- Upload Actions -->
-                        <div id="upload-actions" class="upload-actions">
-                            <label for="gpx-file-input" id="upload-more-btn" class="btn btn-primary">
-                                📁 Upload More GPX Files
-                            </label>
-                            <button id="clear-all-btn" class="btn btn-secondary" onclick="window.fileUploader.clearAllRoutes()">
-                                🗑️ Clear All Routes
-                            </button>
-                        </div>
-
-                        <!-- Drop Zone Hint -->
-                        <div id="drop-zone-hint" class="drop-zone-hint">
-                            <p>💡 Tip: You can also drag & drop GPX files anywhere on this page</p>
-                        </div>
-                    </section>
-
-                    <aside id="aggregation-sidebar" class="aggregation-sidebar" aria-hidden="false">
+                        <aside id="aggregation-sidebar" class="aggregation-sidebar" aria-hidden="false">
                         <button id="sidebar-close-btn" class="sidebar-close-btn" type="button" aria-label="Close coin controls">×</button>
                         <h4>Coin Controls</h4>
+
+                        <div id="viewer-toggle-buttons" class="viewer-toggle-buttons">
+                            <button id="map-view-btn" class="viewer-toggle-btn active" type="button">
+                                🗺️ Map View
+                            </button>
+                            <button id="view-coin-btn" class="viewer-toggle-btn" type="button">
+                                🪙 Coin View
+                            </button>
+                        </div>
 
                         <div class="sidebar-group">
                             <span class="group-label">Elevation Mode</span>
@@ -257,8 +238,33 @@
                             <button id="clear-coin-btn" class="btn btn-secondary" type="button" disabled>✖️ Clear Coin</button>
                         </div>
                     </aside>
+                    </div>  <!-- End viewer-sidebar-row -->
+
+                    <!-- Full Width Routes & Coins Lists -->
+                    <div class="list-tabs" id="list-tabs">
+                        <div class="tab-buttons" role="tablist" aria-label="Routes and saved coins">
+                            <button id="routes-tab-btn" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="routes-tab-panel" data-target="routes">
+                                Routes
+                            </button>
+                            <button id="coins-tab-btn" class="tab-button tab-button-coins" type="button" role="tab" aria-selected="false" aria-controls="coins-tab-panel" data-target="coins">
+                                💰 Saved Coins
+                            </button>
+                        </div>
+                        <div id="routes-tab-panel" class="tab-panel active" role="tabpanel" aria-labelledby="routes-tab-btn">
+                            <div id="route-list" class="list-panel"></div>
+                        </div>
+                        <div id="coins-tab-panel" class="tab-panel" role="tabpanel" aria-labelledby="coins-tab-btn" aria-hidden="true">
+                            <div id="coin-list" class="list-panel"></div>
+                        </div>
+                    </div>
+
+                    <!-- Full Width Drop Zone Hint -->
+                    <div id="drop-zone-hint" class="drop-zone-hint">
+                        <p>💡 Tip: You can also drag & drop GPX files anywhere on this page</p>
+                    </div>
+
                     <div id="sidebar-overlay" class="sidebar-overlay" hidden></div>
-                </div>
+                </div>  <!-- End aggregation-layout -->
             </div>  <!-- End main-content -->
         </div>  <!-- End route-visualization-area -->
                     </div>
