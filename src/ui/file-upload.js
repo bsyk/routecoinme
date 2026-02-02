@@ -669,6 +669,11 @@ class FileUploadHandler {
                 downloadBtn.addEventListener('click', () => this.handleDownloadCoinClick());
             }
 
+            const downloadStlBtn = document.getElementById('download-stl-btn');
+            if (downloadStlBtn) {
+                downloadStlBtn.addEventListener('click', () => this.handleDownloadSTLClick());
+            }
+
             const clearBtn = document.getElementById('clear-coin-btn');
             if (clearBtn) {
                 clearBtn.addEventListener('click', () => this.handleClearCoinClick());
@@ -1074,6 +1079,7 @@ class FileUploadHandler {
         const viewCoinBtn = document.getElementById('view-coin-btn');
         const saveBtn = document.getElementById('save-coin-btn');
         const downloadBtn = document.getElementById('download-coin-btn');
+        const downloadStlBtn = document.getElementById('download-stl-btn');
         const clearBtn = document.getElementById('clear-coin-btn');
 
         if (viewCoinBtn) {
@@ -1088,6 +1094,12 @@ class FileUploadHandler {
             // Enable download if we have an aggregated route OR exactly 1 selected route (like a Year Coin)
             const hasOneSelectedRoute = this.selectedRoutes.size === 1;
             downloadBtn.disabled = !hasAggregatedRoute && !hasOneSelectedRoute;
+        }
+
+        if (downloadStlBtn) {
+            // Same logic as downloadBtn - enable if we have an aggregated route OR exactly 1 selected route
+            const hasOneSelectedRoute = this.selectedRoutes.size === 1;
+            downloadStlBtn.disabled = !hasAggregatedRoute && !hasOneSelectedRoute;
         }
 
         if (clearBtn) {
@@ -1876,6 +1888,28 @@ class FileUploadHandler {
         this.showNotification('Create or load a coin before downloading.', 'warning');
     }
 
+    async handleDownloadSTLClick() {
+        if (this.activeCoin) {
+            await this.downloadCoinSTL(this.activeCoin.id);
+            return;
+        }
+
+        // Check for aggregatedRoute first
+        if (this.aggregatedRoute) {
+            await this.downloadRouteSTL(this.aggregatedRoute.id);
+            return;
+        }
+
+        // If no aggregated route but we have exactly 1 selected route, download that
+        const selectedRoutes = this.uploadedRoutes.filter(route => this.selectedRoutes.has(route.id));
+        if (selectedRoutes.length === 1) {
+            await this.downloadRouteSTL(selectedRoutes[0].id);
+            return;
+        }
+
+        this.showNotification('Create or load a coin before downloading STL.', 'warning');
+    }
+
     handleClearCoinClick() {
         if (!this.isShowingAggregated && !this.activeCoin) {
             return;
@@ -2551,6 +2585,7 @@ class FileUploadHandler {
                     <div class="route-item-color" style="background-color: ${color}"></div>
                     <div class="route-item-actions">
                         <button class="route-action-btn" onclick="window.fileUploader.downloadRoute('${route.id}')" title="Download GPX">💾</button>
+                        <button class="route-action-btn" onclick="window.fileUploader.downloadRouteSTL('${route.id}')" title="Download 3D Printable STL">🖨️</button>
                         <button class="route-action-btn" onclick="window.fileUploader.zoomToRoute('${route.id}')" title="Zoom to Route">🔍</button>
                         <button class="route-action-btn" onclick="window.fileUploader.removeRouteById('${route.id}')" title="Remove Route">🗑️</button>
                     </div>
@@ -2654,7 +2689,8 @@ class FileUploadHandler {
                         </div>
                     </div>
                     <div class="coin-item-actions">
-                        <button class="coin-action-btn" title="Download Coin" onclick="event.stopPropagation(); window.fileUploader.downloadSavedCoin('${coin.id}')">⬇️</button>
+                        <button class="coin-action-btn" title="Download Coin GPX" onclick="event.stopPropagation(); window.fileUploader.downloadSavedCoin('${coin.id}')">⬇️</button>
+                        <button class="coin-action-btn" title="Download Coin STL" onclick="event.stopPropagation(); window.fileUploader.downloadCoinSTL('${coin.id}')">🖨️</button>
                         <button class="coin-action-btn" title="Delete Coin" onclick="event.stopPropagation(); window.fileUploader.deleteSavedCoin('${coin.id}')">🗑️</button>
                     </div>
                 </div>
@@ -2912,18 +2948,94 @@ class FileUploadHandler {
     downloadFile(content, filename, mimeType = 'text/plain') {
         const blob = new Blob([content], { type: mimeType });
         const url = URL.createObjectURL(blob);
-        
+
         const link = document.createElement('a');
         link.href = url;
         link.download = filename;
         link.style.display = 'none';
-        
+
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        
+
         // Clean up the URL object
         setTimeout(() => URL.revokeObjectURL(url), 100);
+    }
+
+    // Lazy load STL exporter
+    async initSTLExporter() {
+        if (!this.stlExporter) {
+            const module = await import('../export/stl-exporter.js');
+            this.stlExporter = module;
+        }
+        return this.stlExporter;
+    }
+
+    // Download route as STL
+    async downloadRouteSTL(routeId, options = {}) {
+        try {
+            const route = this.uploadedRoutes.find(r => r.id === routeId);
+            if (!route) {
+                console.error('❌ Route not found:', routeId);
+                this.showNotification('Route not found', 'error');
+                return;
+            }
+
+            this.showNotification('🖨️ Generating STL file...', 'info');
+
+            // Lazy load STL exporter
+            const exporter = await this.initSTLExporter();
+
+            // Export and download
+            await exporter.exportAndDownload(route, options);
+
+            const filename = exporter.generateFilename(route, options);
+            this.showNotification(`✅ Downloaded: ${filename}`, 'success');
+        } catch (error) {
+            console.error('❌ Failed to download STL:', error);
+            this.showNotification('Failed to generate STL file. Check console for details.', 'error');
+        }
+    }
+
+    // Download coin as STL
+    async downloadCoinSTL(coinId, options = {}) {
+        try {
+            const coin = this.savedCoins.find(c => c.id === coinId);
+            if (!coin || !coin.route) {
+                console.error('❌ Coin not found:', coinId);
+                this.showNotification('Coin not found', 'error');
+                return;
+            }
+
+            this.showNotification('🖨️ Generating STL file...', 'info');
+
+            // Lazy load STL exporter
+            const exporter = await this.initSTLExporter();
+
+            // Convert coin options to STL options if needed
+            const stlOptions = this.convertCoinOptionsToSTL(coin, options);
+
+            // Export and download
+            await exporter.exportAndDownload(coin.route, stlOptions);
+
+            const filename = exporter.generateFilename(coin.route, stlOptions);
+            this.showNotification(`✅ Downloaded: ${filename}`, 'success');
+        } catch (error) {
+            console.error('❌ Failed to download coin STL:', error);
+            this.showNotification('Failed to generate STL file. Check console for details.', 'error');
+        }
+    }
+
+    // Convert coin display options to STL options
+    convertCoinOptionsToSTL(coin, baseOptions = {}) {
+        const stlOptions = { ...baseOptions };
+
+        // If coin has cumulative elevation, increase vertical exaggeration
+        if (coin.route?.metadata?.elevationMode === 'cumulative') {
+            stlOptions.vertical = stlOptions.vertical || 5;
+        }
+
+        return stlOptions;
     }
 
     // Zoom to specific route
