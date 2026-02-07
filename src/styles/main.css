@@ -1929,6 +1929,10 @@ body.sidebar-open {
     max-width: 450px;
 }
 
+.modal-content-medium {
+    max-width: 550px;
+}
+
 .modal-header {
     display: flex;
     justify-content: space-between;
@@ -1956,11 +1960,17 @@ body.sidebar-open {
 }
 
 .form-group {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
 }
 
 .form-group:last-child {
     margin-bottom: 0;
+}
+
+.form-group-inline {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
 }
 
 .form-label {
@@ -1971,6 +1981,12 @@ body.sidebar-open {
     font-size: 0.875rem;
 }
 
+.form-group-inline .form-label {
+    margin-bottom: 0;
+    flex: 1;
+    min-width: 0;
+}
+
 .form-input {
     width: 100%;
     padding: 0.75rem;
@@ -1979,6 +1995,11 @@ body.sidebar-open {
     font-size: 1rem;
     font-family: inherit;
     transition: border-color 0.2s ease;
+}
+
+.form-input-compact {
+    width: 80px;
+    padding: 0.5rem 0.75rem;
 }
 
 .form-input:focus {
@@ -2005,6 +2026,42 @@ body.sidebar-open {
     font-size: 0.75rem;
     color: var(--text-secondary);
     line-height: 1.4;
+}
+
+.modal-intro {
+    margin: 0 0 1.5rem 0;
+    padding: 1rem;
+    background: var(--surface);
+    border-left: 3px solid var(--primary-color);
+    border-radius: 4px;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.form-section {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.form-section:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.form-section-title {
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.form-label-unit {
+    font-weight: 400;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
 }
 
 /* Footer */

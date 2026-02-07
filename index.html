@@ -287,27 +287,69 @@
 
     <!-- STL Download Options Modal -->
     <div id="stl-options-modal" class="modal" style="display: none;">
-        <div class="modal-content modal-content-small">
+        <div class="modal-content modal-content-medium">
             <div class="modal-header">
-                <h3>STL Download Options</h3>
+                <h3>3D Print Settings</h3>
                 <button class="modal-close" onclick="window.fileUploader.closeSTLOptionsModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label for="stl-diameter-input" class="form-label">Coin Diameter (cm)</label>
-                    <input type="number" id="stl-diameter-input" class="form-input" min="3" max="20" step="0.5" value="8">
-                    <p class="helper-text">Recommended: 8cm for standard coins</p>
+                <p class="modal-intro">Configure your route coin for 3D printing. All measurements are in millimeters unless noted.</p>
+
+                <div class="form-section">
+                    <h4 class="form-section-title">📏 Size</h4>
+
+                    <div class="form-group">
+                        <div class="form-group-inline">
+                            <label for="stl-diameter-input" class="form-label">
+                                Coin Diameter
+                                <span class="form-label-unit">(cm)</span>
+                            </label>
+                            <input type="number" id="stl-diameter-input" class="form-input form-input-compact" min="3" max="20" step="0.5" value="8">
+                        </div>
+                        <p class="helper-text">The width of your coin. Standard size is 8cm (about 3 inches).</p>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="form-group-inline">
+                            <label for="stl-elevation-height-input" class="form-label">
+                                Elevation Height
+                                <span class="form-label-unit">(mm)</span>
+                            </label>
+                            <input type="number" id="stl-elevation-height-input" class="form-input form-input-compact" min="5" max="60" step="5" value="20">
+                        </div>
+                        <p class="helper-text">How tall the elevation changes appear. Higher values make climbs more dramatic (default: 20mm).</p>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label class="checkbox-option">
-                        <input type="checkbox" id="stl-include-base" checked>
-                        <span>Include base plate</span>
-                    </label>
-                    <p class="helper-text">Uncheck if merging with another STL that already has a base</p>
+
+                <div class="form-section">
+                    <h4 class="form-section-title">🎨 Detail</h4>
+
+                    <div class="form-group">
+                        <div class="form-group-inline">
+                            <label for="stl-route-thickness-input" class="form-label">
+                                Route Line Thickness
+                                <span class="form-label-unit">(mm)</span>
+                            </label>
+                            <input type="number" id="stl-route-thickness-input" class="form-input form-input-compact" min="0.5" max="3" step="0.1" value="1">
+                        </div>
+                        <p class="helper-text">The width of the route line. Thicker lines (1-2mm) are easier to print and see.</p>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h4 class="form-section-title">🔧 Base</h4>
+
+                    <div class="form-group">
+                        <label class="checkbox-option">
+                            <input type="checkbox" id="stl-include-base" checked>
+                            <span>Include circular base plate</span>
+                        </label>
+                        <p class="helper-text">Adds a 3mm base below the route. Uncheck only if you plan to merge this with another model that has its own base.</p>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button id="stl-download-confirm-btn" class="btn btn-primary">Download STL</button>
+                <button id="stl-download-confirm-btn" class="btn btn-primary">Generate & Download STL</button>
                 <button class="btn btn-secondary" onclick="window.fileUploader.closeSTLOptionsModal()">Cancel</button>
             </div>
         </div>
