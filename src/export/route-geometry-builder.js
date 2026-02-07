@@ -92,28 +92,41 @@ export function scaleAndCenter(points, options) {
 
   let availableSize;
   let targetDescription;
+  let routeMaxDimension; // The actual maximum extent of the route
 
   if (options.base > 0 && options.baseDiameter) {
     // Scale to fit within circular base
-    // Leave margin for wall thickness and some clearance
-    const margin = options.buffer * 4; // Wall thickness * 4 for safety
+    // For circular base, we need to fit the diagonal of the bounding box
+    // because the route could span corner-to-corner
+    const routeThickness = options.buffer * 2; // Total thickness of the route wall
+    const clearance = options.edgeMargin !== undefined ? options.edgeMargin : 2; // User-specified or default 2mm
+    const margin = routeThickness + clearance; // Total margin from edge
     const radius = options.baseDiameter / 2;
     availableSize = (radius - margin) * 2; // Diameter minus margins
+
+    // Calculate diagonal of bounding box (in meters) - this is the true max extent
+    routeMaxDimension = Math.sqrt(width * width + depth * depth);
+
     targetDescription = `${options.baseDiameter}mm circular base`;
+    console.log(`  📏 Route bounds: ${(width * 1000).toFixed(1)}mm × ${(depth * 1000).toFixed(1)}mm`);
+    console.log(`  📏 Route diagonal: ${(routeMaxDimension * 1000).toFixed(1)}mm (actual max extent)`);
+    console.log(`  📏 Margin: route thickness ${routeThickness.toFixed(2)}mm + ${clearance.toFixed(2)}mm edge margin = ${margin.toFixed(2)}mm total`);
+    console.log(`  📏 Available space: ${availableSize.toFixed(1)}mm`);
   } else {
     // Scale to fit within rectangular print bed
     const margin = 10; // 10mm margins
     const availableWidth = options.bedx - (2 * margin);
     const availableDepth = options.bedy - (2 * margin);
     availableSize = Math.min(availableWidth, availableDepth);
+
+    // For rectangular bed, use the larger of width or depth
+    routeMaxDimension = Math.max(width, depth);
+
     targetDescription = `${options.bedx}x${options.bedy}mm print bed`;
   }
 
-  // Calculate the maximum dimension of the route
-  const maxDimension = Math.max(width, depth); // in meters
-
   // Convert meters to millimeters and scale to fit
-  const scale = availableSize / (maxDimension * 1000);
+  const scale = availableSize / (routeMaxDimension * 1000);
 
   // Calculate center offsets (in meters)
   const centerX = (bounds.minX + bounds.maxX) / 2;
