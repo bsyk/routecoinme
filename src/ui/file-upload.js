@@ -1147,9 +1147,8 @@ class FileUploadHandler {
         }
 
         if (downloadStlBtn) {
-            // Same logic as downloadBtn - enable if we have an aggregated route OR exactly 1 selected route
-            const hasOneSelectedRoute = this.selectedRoutes.size === 1;
-            downloadStlBtn.disabled = !hasAggregatedRoute && !hasOneSelectedRoute;
+            // Enable if we have any selected routes (we'll aggregate on-the-fly if needed)
+            downloadStlBtn.disabled = !hasSelectedRoutes && !hasAggregatedRoute;
         }
 
         if (clearBtn) {
@@ -1941,24 +1940,35 @@ class FileUploadHandler {
     async handleDownloadSTLClick() {
         // Determine what route to download
         let routeToDownload = null;
-        let isCoin = false;
 
         if (this.activeCoin) {
+            // Use the active coin
             routeToDownload = { type: 'coin', id: this.activeCoin.id };
-            isCoin = true;
         } else if (this.aggregatedRoute) {
+            // Use the existing aggregated route
             routeToDownload = { type: 'route', id: this.aggregatedRoute.id };
         } else {
-            // If no aggregated route but we have exactly 1 selected route, download that
+            // Get selected routes
             const selectedRoutes = this.uploadedRoutes.filter(route => this.selectedRoutes.has(route.id));
-            if (selectedRoutes.length === 1) {
-                routeToDownload = { type: 'route', id: selectedRoutes[0].id };
-            }
-        }
 
-        if (!routeToDownload) {
-            this.showNotification('Create or load a coin before downloading STL.', 'warning');
-            return;
+            if (selectedRoutes.length === 0) {
+                this.showNotification('Select at least one route to download STL.', 'warning');
+                return;
+            } else if (selectedRoutes.length === 1) {
+                // Single route - download directly
+                routeToDownload = { type: 'route', id: selectedRoutes[0].id };
+            } else {
+                // Multiple routes - aggregate on-the-fly
+                console.log(`🔄 Multiple routes selected (${selectedRoutes.length}), aggregating for STL download...`);
+                await this.refreshAggregatedRoute({ reason: 'stl-download' });
+
+                if (!this.aggregatedRoute) {
+                    this.showNotification('Failed to aggregate routes. Please try again.', 'error');
+                    return;
+                }
+
+                routeToDownload = { type: 'route', id: this.aggregatedRoute.id };
+            }
         }
 
         // Show STL options modal
