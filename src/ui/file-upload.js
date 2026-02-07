@@ -1986,6 +1986,7 @@ class FileUploadHandler {
         const diameterInput = document.getElementById('stl-diameter-input');
         const elevationHeightInput = document.getElementById('stl-elevation-height-input');
         const routeThicknessInput = document.getElementById('stl-route-thickness-input');
+        const edgeMarginInput = document.getElementById('stl-edge-margin-input');
         const includeBaseCheckbox = document.getElementById('stl-include-base');
         const confirmBtn = document.getElementById('stl-download-confirm-btn');
 
@@ -1994,17 +1995,19 @@ class FileUploadHandler {
             diameterInput: !!diameterInput,
             elevationHeightInput: !!elevationHeightInput,
             routeThicknessInput: !!routeThicknessInput,
+            edgeMarginInput: !!edgeMarginInput,
             includeBaseCheckbox: !!includeBaseCheckbox,
             confirmBtn: !!confirmBtn
         });
 
-        if (!modal || !diameterInput || !elevationHeightInput || !routeThicknessInput || !includeBaseCheckbox || !confirmBtn) {
+        if (!modal || !diameterInput || !elevationHeightInput || !routeThicknessInput || !edgeMarginInput || !includeBaseCheckbox || !confirmBtn) {
             console.error('❌ STL options modal elements not found');
             console.error('Missing elements:', {
                 modal: !modal ? 'modal' : null,
                 diameterInput: !diameterInput ? 'diameterInput' : null,
                 elevationHeightInput: !elevationHeightInput ? 'elevationHeightInput' : null,
                 routeThicknessInput: !routeThicknessInput ? 'routeThicknessInput' : null,
+                edgeMarginInput: !edgeMarginInput ? 'edgeMarginInput' : null,
                 includeBaseCheckbox: !includeBaseCheckbox ? 'includeBaseCheckbox' : null,
                 confirmBtn: !confirmBtn ? 'confirmBtn' : null
             });
@@ -2015,6 +2018,7 @@ class FileUploadHandler {
         diameterInput.value = '8';              // 80mm / 10 = 8cm
         elevationHeightInput.value = '20';      // targetHeight: 20mm
         routeThicknessInput.value = '1';        // buffer: 0.5mm * 2 = 1mm path width
+        edgeMarginInput.value = '1';            // clearance: 1mm (reduced from 2mm)
         includeBaseCheckbox.checked = true;     // base: 3mm
 
         // Show modal
@@ -2060,12 +2064,14 @@ class FileUploadHandler {
         const diameterInput = document.getElementById('stl-diameter-input');
         const elevationHeightInput = document.getElementById('stl-elevation-height-input');
         const routeThicknessInput = document.getElementById('stl-route-thickness-input');
+        const edgeMarginInput = document.getElementById('stl-edge-margin-input');
         const includeBaseCheckbox = document.getElementById('stl-include-base');
 
         // Parse values with defaults
         const diameterCm = parseFloat(diameterInput.value) || 8;
         const elevationHeight = parseFloat(elevationHeightInput.value) || 20;
         const routeThickness = parseFloat(routeThicknessInput.value) || 1;
+        const edgeMargin = parseFloat(edgeMarginInput.value) || 1;
         const includeBase = includeBaseCheckbox.checked;
 
         // Convert diameter from cm to mm
@@ -2079,13 +2085,15 @@ class FileUploadHandler {
             baseDiameter: diameterMm,
             base: includeBase ? 3 : 0,
             targetHeight: elevationHeight,
-            buffer: buffer
+            buffer: buffer,
+            edgeMargin: edgeMargin  // Pass the user-specified margin
         };
 
         console.log('📊 STL options:', {
             diameter: `${diameterCm}cm (${diameterMm}mm)`,
             elevationHeight: `${elevationHeight}mm`,
             routeThickness: `${routeThickness}mm (buffer: ${buffer}mm)`,
+            edgeMargin: `${edgeMargin}mm`,
             includeBase: includeBase
         });
 
