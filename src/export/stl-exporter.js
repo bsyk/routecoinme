@@ -119,6 +119,16 @@ export function generateFilename(route, options = {}) {
     baseName += `_${options.vertical}x`;
   }
 
+  // Add base diameter if non-default
+  if (options.baseDiameter && options.baseDiameter !== DEFAULT_STL_OPTIONS.baseDiameter) {
+    baseName += `_${options.baseDiameter / 10}cm`;
+  }
+
+  // Add note if base is omitted
+  if (options.base === 0) {
+    baseName += '_no-base';
+  }
+
   // Sanitize filename (remove special characters)
   baseName = baseName
     .replace(/[^a-zA-Z0-9_-]/g, '_')

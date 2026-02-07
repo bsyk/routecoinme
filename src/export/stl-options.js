@@ -16,7 +16,7 @@ export const DEFAULT_STL_OPTIONS = {
   targetHeight: 20,        // Target height for elevation range (mm) - set to 0 to use vertical multiplier instead
   vertical: 10,            // Vertical exaggeration multiplier (only used if targetHeight is 0)
   base: 3,                 // Base plate height (mm) - 0 = no base plate
-  baseDiameter: 50,        // Base plate diameter (mm) - circular base, also used for scaling route
+  baseDiameter: 80,        // Base plate diameter (mm) - circular base, also used for scaling route
   zcut: true,              // Trim at minimum elevation (vs absolute sea level)
 
   // Print bed dimensions (in millimeters) - only used if base=0
@@ -43,7 +43,7 @@ export const STL_PRESETS = {
       ...DEFAULT_STL_OPTIONS,
       targetHeight: 40,      // 40mm elevation range for dramatic effect
       buffer: 0.5,           // Thin 1mm wide path
-      baseDiameter: 60       // Larger base for taller model
+      baseDiameter: 100      // Larger base for taller model (10cm)
     }
   },
 
@@ -54,7 +54,7 @@ export const STL_PRESETS = {
       ...DEFAULT_STL_OPTIONS,
       targetHeight: 10,      // 10mm elevation range
       buffer: 0.75,          // 1.5mm wide path for visibility
-      baseDiameter: 50
+      baseDiameter: 80       // Standard 8cm base
     }
   },
 
@@ -65,7 +65,7 @@ export const STL_PRESETS = {
       ...DEFAULT_STL_OPTIONS,
       targetHeight: 30,      // 30mm elevation range
       buffer: 0.5,           // Thin 1mm wide path
-      baseDiameter: 55       // Medium base
+      baseDiameter: 80       // Standard 8cm base
     }
   }
 };

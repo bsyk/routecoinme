@@ -53,25 +53,33 @@ class FileUploadHandler {
     }
 
     async init() {
-        this.setupFileInput();
-        this.setupDropZone();
-        this.setupViewToggleButtons();
-        this.setupListTabs();
-        this.setupSidebarControls();
-        await this.initializeStorage();
-        
-        // Set up centralized state listener
-        this.setupStateListener();
-        this.setupUnitPreferenceHandlers();
-        
-        // Initialize the map visualization
-        this.initializeMapVisualization();
-        
-        // Show initial UI state
-        this.showInitialUIState();
-        
-        await this.loadStoredRoutes();
-        await this.loadStoredCoins();
+        try {
+            this.setupFileInput();
+            this.setupDropZone();
+            this.setupViewToggleButtons();
+            this.setupListTabs();
+            this.setupSidebarControls();
+            await this.initializeStorage();
+
+            // Set up centralized state listener
+            this.setupStateListener();
+            this.setupUnitPreferenceHandlers();
+
+            // Initialize the map visualization
+            this.initializeMapVisualization();
+
+            // Show initial UI state
+            this.showInitialUIState();
+
+            await this.loadStoredRoutes();
+            await this.loadStoredCoins();
+
+            console.log('✅ FileUploadHandler initialization complete');
+        } catch (error) {
+            console.error('❌ FileUploadHandler initialization failed:', error);
+            console.error('Stack trace:', error.stack);
+            throw error;
+        }
     }
 
     // Add state change listeners
@@ -240,17 +248,18 @@ class FileUploadHandler {
     handleLoadingFinished(data) {
         console.log('✅ Loading finished - hiding loading state and ensuring routes UI');
         this.hideLoadingState();
-        
+
         // Switch to routes UI if we have routes
         if (this.uploadedRoutes.length > 0) {
             this.showRoutesUI();
             // Ensure map is initialized and routes are added when transitioning to routes UI
             this.initializeMapVisualization();
         }
-        
+
         // Update route list and stats display (important for loaded routes from storage)
         this.updateRouteList();
         this.updateStatsDisplay();
+        this.updateCoinActionButtons();  // Enable buttons based on loaded/selected routes
     }
 
     handleBatchComplete(data) {
@@ -555,136 +564,169 @@ class FileUploadHandler {
 
     // Set up view toggle buttons
     setupViewToggleButtons() {
-        // Wait for DOM to be ready
-        setTimeout(() => {
-            const mapBtn = document.getElementById('map-view-btn');
-            const coinBtn = document.getElementById('view-coin-btn');
+        console.log('⚙️ Setting up view toggle buttons');
 
-            if (mapBtn) {
-                mapBtn.addEventListener('click', async () => {
-                    await this.switchViewMode('map');
-                });
-            }
+        const mapBtn = document.getElementById('map-view-btn');
+        const coinBtn = document.getElementById('view-coin-btn');
 
-            if (coinBtn) {
-                coinBtn.addEventListener('click', async () => {
-                    await this.switchViewMode('3d');
-                });
-            }
+        if (!mapBtn || !coinBtn) {
+            console.error('❌ View toggle buttons not found:', {
+                mapBtn: !!mapBtn,
+                coinBtn: !!coinBtn
+            });
+            throw new Error('Required view toggle buttons not found in DOM');
+        }
 
-            console.log('🎛️ View toggle buttons initialized');
-        }, 100);
+        mapBtn.addEventListener('click', async () => {
+            console.log('🗺️ Map View button clicked');
+            await this.switchViewMode('map');
+        });
+
+        coinBtn.addEventListener('click', async () => {
+            console.log('🪙 Coin View button clicked');
+            await this.switchViewMode('3d');
+        });
+
+        console.log('✅ View toggle buttons initialized');
     }
 
     setupListTabs() {
-        setTimeout(() => {
-            const routesTabBtn = document.getElementById('routes-tab-btn');
-            const coinsTabBtn = document.getElementById('coins-tab-btn');
-            const routesPanel = document.getElementById('routes-tab-panel');
-            const coinsPanel = document.getElementById('coins-tab-panel');
+        console.log('⚙️ Setting up list tabs');
 
-            if (!routesTabBtn || !coinsTabBtn || !routesPanel || !coinsPanel) {
-                console.warn('⚠️ List tabs not found during setup');
-                return;
+        const routesTabBtn = document.getElementById('routes-tab-btn');
+        const coinsTabBtn = document.getElementById('coins-tab-btn');
+        const routesPanel = document.getElementById('routes-tab-panel');
+        const coinsPanel = document.getElementById('coins-tab-panel');
+
+        if (!routesTabBtn || !coinsTabBtn || !routesPanel || !coinsPanel) {
+            console.error('❌ List tabs not found:', {
+                routesTabBtn: !!routesTabBtn,
+                coinsTabBtn: !!coinsTabBtn,
+                routesPanel: !!routesPanel,
+                coinsPanel: !!coinsPanel
+            });
+            throw new Error('Required list tab elements not found in DOM');
+        }
+
+        const activateTab = (tabName) => {
+            const showRoutes = tabName === 'routes';
+
+            if (showRoutes && this.activeCoin) {
+                this.handleClearCoinClick();
             }
 
-            const activateTab = (tabName) => {
-                const showRoutes = tabName === 'routes';
+            routesTabBtn.classList.toggle('active', showRoutes);
+            routesTabBtn.setAttribute('aria-selected', showRoutes);
+            routesPanel.classList.toggle('active', showRoutes);
+            routesPanel.setAttribute('aria-hidden', !showRoutes);
 
-                if (showRoutes && this.activeCoin) {
-                    this.handleClearCoinClick();
-                }
+            coinsTabBtn.classList.toggle('active', !showRoutes);
+            coinsTabBtn.setAttribute('aria-selected', !showRoutes);
+            coinsPanel.classList.toggle('active', !showRoutes);
+            coinsPanel.setAttribute('aria-hidden', showRoutes);
 
-                routesTabBtn.classList.toggle('active', showRoutes);
-                routesTabBtn.setAttribute('aria-selected', showRoutes);
-                routesPanel.classList.toggle('active', showRoutes);
-                routesPanel.setAttribute('aria-hidden', !showRoutes);
+            this.activeListTab = showRoutes ? 'routes' : 'coins';
+        };
 
-                coinsTabBtn.classList.toggle('active', !showRoutes);
-                coinsTabBtn.setAttribute('aria-selected', !showRoutes);
-                coinsPanel.classList.toggle('active', !showRoutes);
-                coinsPanel.setAttribute('aria-hidden', showRoutes);
+        routesTabBtn.addEventListener('click', () => activateTab('routes'));
+        coinsTabBtn.addEventListener('click', () => activateTab('coins'));
 
-                this.activeListTab = showRoutes ? 'routes' : 'coins';
-            };
+        this.activateListTab = activateTab;
+        activateTab(this.activeListTab || 'routes');
 
-            routesTabBtn.addEventListener('click', () => activateTab('routes'));
-            coinsTabBtn.addEventListener('click', () => activateTab('coins'));
-
-            this.activateListTab = activateTab;
-            activateTab(this.activeListTab || 'routes');
-
-            console.log('📋 Route/Coin list tabs initialized');
-        }, 100);
+        console.log('✅ Route/Coin list tabs initialized');
     }
 
     setupSidebarControls() {
-        setTimeout(() => {
-            const elevationRadios = document.querySelectorAll('input[name="elevation-mode"]');
-            elevationRadios.forEach(radio => {
-                radio.addEventListener('change', (event) => {
-                    if (this.suppressOptionEvents) {
-                        return;
-                    }
-                    if (event.target.checked) {
-                        this.aggregationOptions.elevationMode = event.target.value;
-                        this.onAggregationOptionsChanged('elevation-mode');
-                    }
-                });
+        console.log('⚙️ Setting up sidebar controls');
+
+        // Set up elevation mode radios
+        const elevationRadios = document.querySelectorAll('input[name="elevation-mode"]');
+        elevationRadios.forEach(radio => {
+            radio.addEventListener('change', (event) => {
+                if (this.suppressOptionEvents) {
+                    return;
+                }
+                if (event.target.checked) {
+                    this.aggregationOptions.elevationMode = event.target.value;
+                    this.onAggregationOptionsChanged('elevation-mode');
+                }
             });
+        });
 
-            const overlaySelect = document.getElementById('overlay-select');
-            if (overlaySelect) {
-                overlaySelect.value = this.aggregationOptions.overlay;
-                overlaySelect.addEventListener('change', (event) => {
-                    if (this.suppressOptionEvents) {
-                        return;
-                    }
-                    this.aggregationOptions.overlay = event.target.value;
-                    this.updateDomainControlState();
-                    this.onAggregationOptionsChanged('overlay');
-                });
-            }
-
-            const domainRadios = document.querySelectorAll('input[name="aggregation-domain"]');
-            domainRadios.forEach(radio => {
-                radio.addEventListener('change', (event) => {
-                    if (this.suppressOptionEvents) {
-                        return;
-                    }
-                    if (event.target.checked) {
-                        this.aggregationOptions.domain = event.target.value;
-                        this.onAggregationOptionsChanged('aggregation-domain');
-                    }
-                });
+        // Set up overlay select
+        const overlaySelect = document.getElementById('overlay-select');
+        if (overlaySelect) {
+            overlaySelect.value = this.aggregationOptions.overlay;
+            overlaySelect.addEventListener('change', (event) => {
+                if (this.suppressOptionEvents) {
+                    return;
+                }
+                this.aggregationOptions.overlay = event.target.value;
+                this.updateDomainControlState();
+                this.onAggregationOptionsChanged('overlay');
             });
+        }
 
-            const saveBtn = document.getElementById('save-coin-btn');
-            if (saveBtn) {
-                saveBtn.addEventListener('click', () => this.handleSaveCoinClick());
-            }
+        // Set up domain radios
+        const domainRadios = document.querySelectorAll('input[name="aggregation-domain"]');
+        domainRadios.forEach(radio => {
+            radio.addEventListener('change', (event) => {
+                if (this.suppressOptionEvents) {
+                    return;
+                }
+                if (event.target.checked) {
+                    this.aggregationOptions.domain = event.target.value;
+                    this.onAggregationOptionsChanged('aggregation-domain');
+                }
+            });
+        });
 
-            const downloadBtn = document.getElementById('download-coin-btn');
-            if (downloadBtn) {
-                downloadBtn.addEventListener('click', () => this.handleDownloadCoinClick());
-            }
+        // Set up sidebar action buttons
+        const saveBtn = document.getElementById('save-coin-btn');
+        const downloadBtn = document.getElementById('download-coin-btn');
+        const downloadStlBtn = document.getElementById('download-stl-btn');
+        const clearBtn = document.getElementById('clear-coin-btn');
 
-            const downloadStlBtn = document.getElementById('download-stl-btn');
-            if (downloadStlBtn) {
-                downloadStlBtn.addEventListener('click', () => this.handleDownloadSTLClick());
-            }
+        if (!saveBtn || !downloadBtn || !downloadStlBtn || !clearBtn) {
+            console.error('❌ Sidebar buttons not found:', {
+                saveBtn: !!saveBtn,
+                downloadBtn: !!downloadBtn,
+                downloadStlBtn: !!downloadStlBtn,
+                clearBtn: !!clearBtn
+            });
+            throw new Error('Required sidebar buttons not found in DOM');
+        }
 
-            const clearBtn = document.getElementById('clear-coin-btn');
-            if (clearBtn) {
-                clearBtn.addEventListener('click', () => this.handleClearCoinClick());
-            }
+        console.log('📌 Attaching event listeners to sidebar buttons');
 
-            this.setupSidebarDrawer();
-            this.updateDomainControlState();
-            this.updateCoinActionButtons();
-            this.updateSidebarControlsState();
-            this.alignSidebarWithViewer();
-        }, 100);
+        saveBtn.addEventListener('click', () => {
+            console.log('💾 Save button clicked');
+            this.handleSaveCoinClick();
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            console.log('⬇️ Download button clicked');
+            this.handleDownloadCoinClick();
+        });
+
+        downloadStlBtn.addEventListener('click', () => {
+            console.log('🖨️ Download STL button clicked');
+            this.handleDownloadSTLClick();
+        });
+
+        clearBtn.addEventListener('click', () => {
+            console.log('✖️ Clear button clicked');
+            this.handleClearCoinClick();
+        });
+
+        console.log('✅ Sidebar controls setup complete');
+
+        this.setupSidebarDrawer();
+        this.updateDomainControlState();
+        this.updateCoinActionButtons();
+        this.updateSidebarControlsState();
+        this.alignSidebarWithViewer();
     }
 
     setupSidebarDrawer() {
@@ -1897,25 +1939,130 @@ class FileUploadHandler {
     }
 
     async handleDownloadSTLClick() {
+        // Determine what route to download
+        let routeToDownload = null;
+        let isCoin = false;
+
         if (this.activeCoin) {
-            await this.downloadCoinSTL(this.activeCoin.id);
+            routeToDownload = { type: 'coin', id: this.activeCoin.id };
+            isCoin = true;
+        } else if (this.aggregatedRoute) {
+            routeToDownload = { type: 'route', id: this.aggregatedRoute.id };
+        } else {
+            // If no aggregated route but we have exactly 1 selected route, download that
+            const selectedRoutes = this.uploadedRoutes.filter(route => this.selectedRoutes.has(route.id));
+            if (selectedRoutes.length === 1) {
+                routeToDownload = { type: 'route', id: selectedRoutes[0].id };
+            }
+        }
+
+        if (!routeToDownload) {
+            this.showNotification('Create or load a coin before downloading STL.', 'warning');
             return;
         }
 
-        // Check for aggregatedRoute first
-        if (this.aggregatedRoute) {
-            await this.downloadRouteSTL(this.aggregatedRoute.id);
+        // Show STL options modal
+        this.showSTLOptionsModal(routeToDownload);
+    }
+
+    showSTLOptionsModal(routeToDownload) {
+        console.log('🖨️ Opening STL options modal for:', routeToDownload);
+
+        // Store route info for later use
+        this.pendingSTLDownload = routeToDownload;
+
+        // Get modal elements
+        const modal = document.getElementById('stl-options-modal');
+        const diameterInput = document.getElementById('stl-diameter-input');
+        const includeBaseCheckbox = document.getElementById('stl-include-base');
+        const confirmBtn = document.getElementById('stl-download-confirm-btn');
+
+        console.log('📋 Modal elements:', {
+            modal: !!modal,
+            diameterInput: !!diameterInput,
+            includeBaseCheckbox: !!includeBaseCheckbox,
+            confirmBtn: !!confirmBtn
+        });
+
+        if (!modal || !diameterInput || !includeBaseCheckbox || !confirmBtn) {
+            console.error('❌ STL options modal elements not found');
+            console.error('Missing elements:', {
+                modal: !modal ? 'modal' : null,
+                diameterInput: !diameterInput ? 'diameterInput' : null,
+                includeBaseCheckbox: !includeBaseCheckbox ? 'includeBaseCheckbox' : null,
+                confirmBtn: !confirmBtn ? 'confirmBtn' : null
+            });
             return;
         }
 
-        // If no aggregated route but we have exactly 1 selected route, download that
-        const selectedRoutes = this.uploadedRoutes.filter(route => this.selectedRoutes.has(route.id));
-        if (selectedRoutes.length === 1) {
-            await this.downloadRouteSTL(selectedRoutes[0].id);
+        // Reset to defaults
+        diameterInput.value = '8';
+        includeBaseCheckbox.checked = true;
+
+        // Show modal
+        console.log('✅ Showing modal');
+        modal.style.display = 'flex';
+
+        // Remove any existing event listeners and add new one
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+
+        newConfirmBtn.addEventListener('click', () => {
+            this.confirmSTLDownload();
+        });
+
+        // Close on escape key
+        const escapeHandler = (e) => {
+            if (e.key === 'Escape') {
+                this.closeSTLOptionsModal();
+                document.removeEventListener('keydown', escapeHandler);
+            }
+        };
+        document.addEventListener('keydown', escapeHandler);
+    }
+
+    closeSTLOptionsModal() {
+        const modal = document.getElementById('stl-options-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+        this.pendingSTLDownload = null;
+    }
+
+    async confirmSTLDownload() {
+        if (!this.pendingSTLDownload) {
+            console.error('❌ No pending STL download');
             return;
         }
 
-        this.showNotification('Create or load a coin before downloading STL.', 'warning');
+        // Store the download info before closing modal (which clears it)
+        const { type, id } = this.pendingSTLDownload;
+
+        // Get options from modal
+        const diameterInput = document.getElementById('stl-diameter-input');
+        const includeBaseCheckbox = document.getElementById('stl-include-base');
+
+        const diameterCm = parseFloat(diameterInput.value) || 8;
+        const includeBase = includeBaseCheckbox.checked;
+
+        // Convert diameter from cm to mm
+        const diameterMm = diameterCm * 10;
+
+        // Build STL options
+        const options = {
+            baseDiameter: diameterMm,
+            base: includeBase ? 3 : 0
+        };
+
+        // Close modal (this clears pendingSTLDownload)
+        this.closeSTLOptionsModal();
+
+        // Download based on type (using locally stored values)
+        if (type === 'coin') {
+            await this.downloadCoinSTL(id, options);
+        } else {
+            await this.downloadRouteSTL(id, options);
+        }
     }
 
     handleClearCoinClick() {
@@ -2982,7 +3129,14 @@ class FileUploadHandler {
     // Download route as STL
     async downloadRouteSTL(routeId, options = {}) {
         try {
-            const route = this.uploadedRoutes.find(r => r.id === routeId);
+            // Check if it's the aggregated route first
+            let route = null;
+            if (this.aggregatedRoute && this.aggregatedRoute.id === routeId) {
+                route = this.aggregatedRoute;
+            } else {
+                route = this.uploadedRoutes.find(r => r.id === routeId);
+            }
+
             if (!route) {
                 console.error('❌ Route not found:', routeId);
                 this.showNotification('Route not found', 'error');
@@ -3214,6 +3368,8 @@ class FileUploadHandler {
         
     // Switch view mode (unified method for HTML onclick handlers)
     async switchViewMode(mode) {
+        console.log(`🔄 Switching view mode to: ${mode}`);
+
         if (mode === 'map') {
             this.currentViewMode = 'map';
             this.showMapView();
@@ -3222,12 +3378,18 @@ class FileUploadHandler {
         }
 
         if (mode === '3d') {
+            console.log('📊 Mode 3D - activeCoin:', !!this.activeCoin, 'aggregatedRoute:', !!this.aggregatedRoute);
+
             if (!this.activeCoin) {
+                console.log('🔄 No active coin, refreshing aggregated route...');
                 await this.refreshAggregatedRoute({ reason: 'view-toggle' });
+
                 if (!this.aggregatedRoute) {
+                    console.log('⚠️ No aggregated route created');
                     this.showNotification('Select at least one route to preview your coin.', 'warning');
                     return;
                 }
+                console.log('✅ Aggregated route created');
             }
 
             this.isShowingAggregated = true;
