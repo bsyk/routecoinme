@@ -285,6 +285,34 @@
         </footer>
     </div>
 
+    <!-- STL Download Options Modal -->
+    <div id="stl-options-modal" class="modal" style="display: none;">
+        <div class="modal-content modal-content-small">
+            <div class="modal-header">
+                <h3>STL Download Options</h3>
+                <button class="modal-close" onclick="window.fileUploader.closeSTLOptionsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="stl-diameter-input" class="form-label">Coin Diameter (cm)</label>
+                    <input type="number" id="stl-diameter-input" class="form-input" min="3" max="20" step="0.5" value="8">
+                    <p class="helper-text">Recommended: 8cm for standard coins</p>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-option">
+                        <input type="checkbox" id="stl-include-base" checked>
+                        <span>Include base plate</span>
+                    </label>
+                    <p class="helper-text">Uncheck if merging with another STL that already has a base</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="stl-download-confirm-btn" class="btn btn-primary">Download STL</button>
+                <button class="btn btn-secondary" onclick="window.fileUploader.closeSTLOptionsModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="/src/main.js"></script>
 </body>
 </html>
