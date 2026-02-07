@@ -1974,30 +1974,38 @@ class FileUploadHandler {
         // Get modal elements
         const modal = document.getElementById('stl-options-modal');
         const diameterInput = document.getElementById('stl-diameter-input');
+        const elevationHeightInput = document.getElementById('stl-elevation-height-input');
+        const routeThicknessInput = document.getElementById('stl-route-thickness-input');
         const includeBaseCheckbox = document.getElementById('stl-include-base');
         const confirmBtn = document.getElementById('stl-download-confirm-btn');
 
         console.log('📋 Modal elements:', {
             modal: !!modal,
             diameterInput: !!diameterInput,
+            elevationHeightInput: !!elevationHeightInput,
+            routeThicknessInput: !!routeThicknessInput,
             includeBaseCheckbox: !!includeBaseCheckbox,
             confirmBtn: !!confirmBtn
         });
 
-        if (!modal || !diameterInput || !includeBaseCheckbox || !confirmBtn) {
+        if (!modal || !diameterInput || !elevationHeightInput || !routeThicknessInput || !includeBaseCheckbox || !confirmBtn) {
             console.error('❌ STL options modal elements not found');
             console.error('Missing elements:', {
                 modal: !modal ? 'modal' : null,
                 diameterInput: !diameterInput ? 'diameterInput' : null,
+                elevationHeightInput: !elevationHeightInput ? 'elevationHeightInput' : null,
+                routeThicknessInput: !routeThicknessInput ? 'routeThicknessInput' : null,
                 includeBaseCheckbox: !includeBaseCheckbox ? 'includeBaseCheckbox' : null,
                 confirmBtn: !confirmBtn ? 'confirmBtn' : null
             });
             return;
         }
 
-        // Reset to defaults
-        diameterInput.value = '8';
-        includeBaseCheckbox.checked = true;
+        // Reset to defaults (matching DEFAULT_STL_OPTIONS)
+        diameterInput.value = '8';              // 80mm / 10 = 8cm
+        elevationHeightInput.value = '20';      // targetHeight: 20mm
+        routeThicknessInput.value = '1';        // buffer: 0.5mm * 2 = 1mm path width
+        includeBaseCheckbox.checked = true;     // base: 3mm
 
         // Show modal
         console.log('✅ Showing modal');
@@ -2040,19 +2048,36 @@ class FileUploadHandler {
 
         // Get options from modal
         const diameterInput = document.getElementById('stl-diameter-input');
+        const elevationHeightInput = document.getElementById('stl-elevation-height-input');
+        const routeThicknessInput = document.getElementById('stl-route-thickness-input');
         const includeBaseCheckbox = document.getElementById('stl-include-base');
 
+        // Parse values with defaults
         const diameterCm = parseFloat(diameterInput.value) || 8;
+        const elevationHeight = parseFloat(elevationHeightInput.value) || 20;
+        const routeThickness = parseFloat(routeThicknessInput.value) || 1;
         const includeBase = includeBaseCheckbox.checked;
 
         // Convert diameter from cm to mm
         const diameterMm = diameterCm * 10;
 
+        // Convert route thickness (total width) to buffer (half-width)
+        const buffer = routeThickness / 2;
+
         // Build STL options
         const options = {
             baseDiameter: diameterMm,
-            base: includeBase ? 3 : 0
+            base: includeBase ? 3 : 0,
+            targetHeight: elevationHeight,
+            buffer: buffer
         };
+
+        console.log('📊 STL options:', {
+            diameter: `${diameterCm}cm (${diameterMm}mm)`,
+            elevationHeight: `${elevationHeight}mm`,
+            routeThickness: `${routeThickness}mm (buffer: ${buffer}mm)`,
+            includeBase: includeBase
+        });
 
         // Close modal (this clears pendingSTLDownload)
         this.closeSTLOptionsModal();
