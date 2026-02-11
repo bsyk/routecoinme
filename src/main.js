@@ -100,6 +100,15 @@ class RouteCoinMe {
             });
         }
 
+        // Segment Coin - import Strava segments
+        const segmentCoinBtn = document.getElementById('segment-coin-btn');
+        if (segmentCoinBtn) {
+            segmentCoinBtn.addEventListener('click', () => {
+                console.log('🏆 Segment Coin clicked');
+                this.handleSegmentCoin();
+            });
+        }
+
         // Year Coin - all 2025 cycling activities
         const yearCoinBtn = document.getElementById('year-coin-btn');
         if (yearCoinBtn) {
@@ -152,6 +161,21 @@ class RouteCoinMe {
                 `;
             }
         }
+    }
+
+    handleSegmentCoin() {
+        // Check if user is authenticated with Strava
+        const isAuthenticated = this.stravaAuth?.getCachedAuthStatus?.() ?? false;
+
+        if (!isAuthenticated) {
+            alert('Please connect with Strava to import segments.');
+            this.stravaAuth?.authenticate();
+            return;
+        }
+
+        // Open the segment import dialog
+        console.log('🏔️ Opening segment import dialog...');
+        this.stravaAuth?.showSegmentImportDialog();
     }
 
     async handleYearCoin() {
