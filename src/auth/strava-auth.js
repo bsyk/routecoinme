@@ -270,6 +270,8 @@ class StravaAuth {
         }
 
         this.showAuthenticatedFeatures();
+        this.enableSegmentCoinButton();
+        this.enableYearCoinButton();
     }
 
     // Update UI for unauthenticated user
@@ -281,6 +283,9 @@ class StravaAuth {
             authBtn.classList.add('btn-primary');
             authBtn.onclick = () => this.authenticate();
         }
+
+        this.disableSegmentCoinButton();
+        this.disableYearCoinButton();
     }
 
     // Show user menu for authenticated users
@@ -982,6 +987,78 @@ class StravaAuth {
         }
     }
 
+    // --- Feature Button Management (Strava-dependent buttons) ---
+
+    enableSegmentCoinButton() {
+        const segmentCoinBtn = document.getElementById('segment-coin-btn');
+        if (segmentCoinBtn) {
+            segmentCoinBtn.disabled = false;
+            segmentCoinBtn.classList.remove('feature-button-disabled');
+
+            // Remove badge
+            const badge = segmentCoinBtn.querySelector('.feature-badge');
+            if (badge) {
+                badge.remove();
+            }
+
+            console.log('✅ Segment Coin button enabled');
+        }
+    }
+
+    disableSegmentCoinButton() {
+        const segmentCoinBtn = document.getElementById('segment-coin-btn');
+        if (segmentCoinBtn) {
+            segmentCoinBtn.disabled = true;
+            segmentCoinBtn.classList.add('feature-button-disabled');
+
+            // Add "Requires Strava" badge if not present
+            const existingBadge = segmentCoinBtn.querySelector('.feature-badge');
+            if (!existingBadge) {
+                const badge = document.createElement('span');
+                badge.className = 'feature-badge';
+                badge.textContent = 'Requires Strava';
+                segmentCoinBtn.appendChild(badge);
+            }
+
+            console.log('🔒 Segment Coin button disabled');
+        }
+    }
+
+    enableYearCoinButton() {
+        const yearCoinBtn = document.getElementById('year-coin-btn');
+        if (yearCoinBtn) {
+            yearCoinBtn.disabled = false;
+            yearCoinBtn.classList.remove('feature-button-disabled');
+
+            // Remove badge
+            const badge = yearCoinBtn.querySelector('.feature-badge');
+            if (badge) {
+                badge.remove();
+            }
+
+            console.log('✅ Year Coin button enabled');
+        }
+    }
+
+    disableYearCoinButton() {
+        const yearCoinBtn = document.getElementById('year-coin-btn');
+        if (yearCoinBtn) {
+            yearCoinBtn.disabled = true;
+            yearCoinBtn.classList.add('feature-button-disabled');
+
+            // Add "Requires Strava" badge if not present
+            const existingBadge = yearCoinBtn.querySelector('.feature-badge');
+            if (!existingBadge) {
+                const badge = document.createElement('span');
+                badge.className = 'feature-badge';
+                badge.textContent = 'Requires Strava';
+                yearCoinBtn.appendChild(badge);
+            }
+
+            console.log('🔒 Year Coin button disabled');
+        }
+    }
+
     // --- Segment Import Methods ---
 
     // Show segment import dialog
@@ -1110,6 +1187,17 @@ class StravaAuth {
             if (window.fileUploader) {
                 window.fileUploader.addRoute(route);
                 await window.fileUploader.saveRoutesToStorage();
+
+                // Deselect all routes and select only the newly imported segment
+                console.log('🎯 Selecting only the imported segment');
+                window.fileUploader.selectedRoutes.clear();
+                window.fileUploader.selectedRoutes.add(route.id);
+
+                // Trigger visualization update
+                window.fileUploader.notifyStateChange('selected-routes-changed', {
+                    reason: 'segment-import',
+                    routeId: route.id
+                });
 
                 console.log('✅ Segment imported successfully');
                 this.showNotification(`✅ Imported: ${route.name}`, 'success');
@@ -1347,6 +1435,17 @@ class StravaAuth {
             if (window.fileUploader) {
                 window.fileUploader.addRoute(route);
                 await window.fileUploader.saveRoutesToStorage();
+
+                // Deselect all routes and select only the newly imported segment
+                console.log('🎯 Selecting only the imported segment');
+                window.fileUploader.selectedRoutes.clear();
+                window.fileUploader.selectedRoutes.add(route.id);
+
+                // Trigger visualization update
+                window.fileUploader.notifyStateChange('selected-routes-changed', {
+                    reason: 'segment-import',
+                    routeId: route.id
+                });
 
                 console.log('✅ Segment imported successfully');
                 this.showNotification(`✅ Imported: ${route.name}`, 'success');
