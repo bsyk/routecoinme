@@ -302,10 +302,12 @@ class StravaAuth {
     // Show features available to authenticated users
     showAuthenticatedFeatures() {
         console.log('🎉 Showing authenticated features...');
-        
+
         // Add Strava import button to upload actions if it doesn't exist
         this.addStravaImportButton();
-        
+        // Add Segment import button
+        this.addSegmentImportButton();
+
         // Update ONLY the landing state content if it's visible (don't touch demo-placeholder)
         const landingState = document.getElementById('landing-state');
         if (landingState && window.getComputedStyle(landingState).display !== 'none') {
@@ -977,6 +979,386 @@ class StravaAuth {
         } finally {
             startBtn.disabled = false;
             startBtn.style.opacity = '1';
+        }
+    }
+
+    // --- Segment Import Methods ---
+
+    // Show segment import dialog
+    showSegmentImportDialog() {
+        console.log('🏔️ Opening segment import dialog...');
+
+        let modal = document.getElementById('segment-import-modal');
+        if (!modal) {
+            modal = this.createSegmentImportModal();
+        }
+
+        modal.style.display = 'flex';
+    }
+
+    // Create segment import modal
+    createSegmentImportModal() {
+        const modal = document.createElement('div');
+        modal.id = 'segment-import-modal';
+        modal.className = 'privacy-modal-overlay';
+        modal.style.display = 'none';
+
+        modal.innerHTML = `
+            <div class="privacy-modal" style="max-width: 600px;">
+                <div class="privacy-modal-header">
+                    <h2>🏔️ Import Segment</h2>
+                    <button class="modal-close" onclick="window.stravaAuth.closeSegmentImportModal()">×</button>
+                </div>
+                <div class="privacy-modal-content">
+                    <p>Import a Strava segment by ID or URL, or select from your activities.</p>
+
+                    <div style="margin: 20px 0;">
+                        <h3 style="margin-bottom: 10px;">Option 1: Direct Import</h3>
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">
+                            Segment URL or ID:
+                        </label>
+                        <input type="text"
+                               id="segment-id-input"
+                               placeholder="https://www.strava.com/segments/12345678 or 12345678"
+                               style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px;">
+                        <button class="btn btn-primary" onclick="window.stravaAuth.importSegmentById()">
+                            📥 Import Segment
+                        </button>
+                    </div>
+
+                    <div style="margin: 30px 0; border-top: 1px solid #ddd; padding-top: 20px;">
+                        <h3 style="margin-bottom: 10px;">Option 2: From Activity</h3>
+                        <button class="btn btn-secondary" onclick="window.stravaAuth.showActivitySegmentsDialog()" style="width: 100%;">
+                            📊 Browse Activity Segments
+                        </button>
+                    </div>
+                </div>
+                <div class="privacy-modal-actions">
+                    <button class="btn btn-secondary" onclick="window.stravaAuth.closeSegmentImportModal()">
+                        Close
+                    </button>
+                </div>
+            </div>
+        `;
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeSegmentImportModal();
+            }
+        });
+
+        document.body.appendChild(modal);
+        return modal;
+    }
+
+    closeSegmentImportModal() {
+        const modal = document.getElementById('segment-import-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    // Parse segment ID from URL or direct ID
+    parseSegmentId(input) {
+        if (!input || typeof input !== 'string') {
+            return null;
+        }
+
+        const trimmed = input.trim();
+
+        // Direct ID (numbers only)
+        if (/^\d+$/.test(trimmed)) {
+            return trimmed;
+        }
+
+        // Full URL patterns (case-insensitive)
+        const urlPatterns = [
+            /strava\.com\/segments\/(\d+)/i,
+            /strava\.com\/segments\/explore\/(\d+)/i,
+        ];
+
+        for (const pattern of urlPatterns) {
+            const match = trimmed.match(pattern);
+            if (match && match[1]) {
+                return match[1];
+            }
+        }
+
+        return null;
+    }
+
+    // Import segment by ID/URL
+    async importSegmentById() {
+        const input = document.getElementById('segment-id-input');
+        if (!input) return;
+
+        const inputValue = input.value;
+        const segmentId = this.parseSegmentId(inputValue);
+
+        if (!segmentId) {
+            this.showNotification('Invalid segment URL or ID', 'error');
+            return;
+        }
+
+        try {
+            console.log(`📥 Importing segment ${segmentId}...`);
+            this.showNotification('⏳ Importing segment from Strava...', 'info', 2000);
+
+            const route = await this.callStravaAPI(`/import-segment/${segmentId}`);
+
+            // Add to file uploader
+            if (window.fileUploader) {
+                window.fileUploader.addRoute(route);
+                await window.fileUploader.saveRoutesToStorage();
+
+                console.log('✅ Segment imported successfully');
+                this.showNotification(`✅ Imported: ${route.name}`, 'success');
+
+                this.closeSegmentImportModal();
+                window.fileUploader.hideLoadingState();
+            }
+
+        } catch (error) {
+            console.error('❌ Error importing segment:', error);
+            this.showNotification(`❌ ${error.message}`, 'error');
+        }
+    }
+
+    // Add segment import button to authenticated features
+    addSegmentImportButton() {
+        const uploadActions = document.getElementById('upload-actions');
+        if (uploadActions && !document.getElementById('segment-import-btn')) {
+            const segmentBtn = document.createElement('button');
+            segmentBtn.id = 'segment-import-btn';
+            segmentBtn.className = 'btn btn-primary';
+            segmentBtn.onclick = () => this.showSegmentImportDialog();
+            segmentBtn.innerHTML = '🏔️ Import Segment';
+
+            // Insert after Strava import button
+            const stravaImportBtn = document.getElementById('strava-import-btn');
+            if (stravaImportBtn && stravaImportBtn.parentNode) {
+                stravaImportBtn.parentNode.insertBefore(segmentBtn, stravaImportBtn.nextSibling);
+            }
+        }
+    }
+
+    // Show activity segments dialog
+    async showActivitySegmentsDialog() {
+        try {
+            console.log('📊 Fetching recent activities for segment selection...');
+            this.showNotification('⏳ Loading activities...', 'info', 2000);
+
+            const activities = await this.getRecentActivities();
+
+            let modal = document.getElementById('activity-segments-modal');
+            if (!modal) {
+                modal = this.createActivitySegmentsModal();
+            }
+
+            const modalContent = modal.querySelector('.activity-segments-content');
+            if (modalContent) {
+                const distanceMeters = (activity) => Number(activity.distance) || 0;
+                const distanceDisplay = (activity) => unitPreferences.formatDistance(distanceMeters(activity) / 1000);
+
+                const activitiesHTML = activities.map(activity => `
+                    <div class="activity-item" style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px; background: white;">
+                        <strong>${activity.name}</strong>
+                        <br>
+                        <small>${activity.sport_type || activity.type} • ${distanceDisplay(activity)} • ${activity.start_date_local}</small>
+                        <br>
+                        <button class="btn btn-sm btn-primary" onclick="window.stravaAuth.showSegmentsForActivity('${activity.id}')" style="margin-top: 5px;">
+                            🏔️ View Segments
+                        </button>
+                    </div>
+                `).join('');
+
+                modalContent.innerHTML = `
+                    <h3>📊 Select Activity</h3>
+                    <div class="activities-list" style="max-height: 400px; overflow-y: auto; margin: 15px 0;">
+                        ${activitiesHTML}
+                    </div>
+                `;
+            }
+
+            modal.style.display = 'flex';
+
+        } catch (error) {
+            console.error('❌ Error loading activities:', error);
+            this.showNotification(`❌ ${error.message}`, 'error');
+        }
+    }
+
+    createActivitySegmentsModal() {
+        const modal = document.createElement('div');
+        modal.id = 'activity-segments-modal';
+        modal.className = 'privacy-modal-overlay';
+        modal.style.display = 'none';
+
+        modal.innerHTML = `
+            <div class="privacy-modal" style="max-width: 600px;">
+                <div class="privacy-modal-header">
+                    <h2>📊 Activity Segments</h2>
+                    <button class="modal-close" onclick="window.stravaAuth.closeActivitySegmentsModal()">×</button>
+                </div>
+                <div class="activity-segments-content privacy-modal-content">
+                    <!-- Content will be inserted here -->
+                </div>
+                <div class="privacy-modal-actions">
+                    <button class="btn btn-secondary" onclick="window.stravaAuth.closeActivitySegmentsModal()">
+                        Close
+                    </button>
+                </div>
+            </div>
+        `;
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeActivitySegmentsModal();
+            }
+        });
+
+        document.body.appendChild(modal);
+        return modal;
+    }
+
+    closeActivitySegmentsModal() {
+        const modal = document.getElementById('activity-segments-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    // Show segments for a specific activity
+    async showSegmentsForActivity(activityId) {
+        try {
+            console.log(`📊 Fetching segments for activity ${activityId}...`);
+            this.showNotification('⏳ Loading segments...', 'info', 2000);
+
+            const activity = await this.callStravaAPI(`/activities/${activityId}`);
+
+            if (!activity.segment_efforts || activity.segment_efforts.length === 0) {
+                this.showNotification('No segments found for this activity', 'info');
+                return;
+            }
+
+            // Sort segments by priority: KOM → Top 10 → PR → Others
+            const sortedSegments = this.prioritizeSegments(activity.segment_efforts);
+
+            const modal = document.getElementById('activity-segments-modal');
+            const modalContent = modal.querySelector('.activity-segments-content');
+
+            if (modalContent) {
+                const segmentsHTML = sortedSegments.map(effort => {
+                    const segment = effort.segment;
+                    const badges = this.getSegmentBadges(effort);
+                    const distanceKm = (segment.distance / 1000).toFixed(2);
+                    const distanceDisplay = unitPreferences.formatDistance(parseFloat(distanceKm));
+
+                    return `
+                        <div class="segment-item" style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px; background: white;">
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <div style="flex: 1;">
+                                    <strong>${segment.name}</strong> ${badges}
+                                    <br>
+                                    <small>
+                                        ${distanceDisplay} •
+                                        ${segment.average_grade.toFixed(1)}% avg •
+                                        ${segment.maximum_grade.toFixed(1)}% max
+                                    </small>
+                                </div>
+                                <button class="btn btn-sm btn-primary"
+                                        onclick="window.stravaAuth.importSegmentFromActivity('${segment.id}')"
+                                        style="margin-left: 10px; white-space: nowrap;">
+                                    📥 Import
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                modalContent.innerHTML = `
+                    <h3>🏔️ Segments from "${activity.name}"</h3>
+                    <div class="segments-list" style="max-height: 400px; overflow-y: auto; margin: 15px 0;">
+                        ${segmentsHTML}
+                    </div>
+                    <button class="btn btn-secondary" onclick="window.stravaAuth.showActivitySegmentsDialog()" style="width: 100%; margin-top: 10px;">
+                        ← Back to Activities
+                    </button>
+                `;
+            }
+
+        } catch (error) {
+            console.error('❌ Error loading segments:', error);
+            this.showNotification(`❌ ${error.message}`, 'error');
+        }
+    }
+
+    // Prioritize segments: KOM → Top 10 → PR → Others
+    prioritizeSegments(segmentEfforts) {
+        const koms = [];
+        const topTens = [];
+        const prs = [];
+        const others = [];
+
+        for (const effort of segmentEfforts) {
+            if (effort.kom_rank === 1) {
+                koms.push(effort);
+            } else if (effort.kom_rank && effort.kom_rank <= 10) {
+                topTens.push(effort);
+            } else if (effort.pr_rank) {
+                prs.push(effort);
+            } else {
+                others.push(effort);
+            }
+        }
+
+        // Sort within each group by rank
+        topTens.sort((a, b) => a.kom_rank - b.kom_rank);
+        prs.sort((a, b) => a.pr_rank - b.pr_rank);
+
+        return [...koms, ...topTens, ...prs, ...others];
+    }
+
+    // Get badge HTML for segment achievements
+    getSegmentBadges(effort) {
+        const badges = [];
+
+        if (effort.kom_rank === 1) {
+            badges.push('<span style="background: gold; color: black; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin-left: 5px;">👑 KOM</span>');
+        } else if (effort.kom_rank && effort.kom_rank <= 10) {
+            badges.push(`<span style="background: silver; color: black; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin-left: 5px;">🏆 Top ${effort.kom_rank}</span>`);
+        }
+
+        if (effort.pr_rank) {
+            badges.push(`<span style="background: #4CAF50; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin-left: 5px;">⭐ PR #${effort.pr_rank}</span>`);
+        }
+
+        return badges.join('');
+    }
+
+    // Import segment from activity context
+    async importSegmentFromActivity(segmentId) {
+        try {
+            console.log(`📥 Importing segment ${segmentId} from activity...`);
+            this.showNotification('⏳ Importing segment...', 'info', 2000);
+
+            const route = await this.callStravaAPI(`/import-segment/${segmentId}`);
+
+            if (window.fileUploader) {
+                window.fileUploader.addRoute(route);
+                await window.fileUploader.saveRoutesToStorage();
+
+                console.log('✅ Segment imported successfully');
+                this.showNotification(`✅ Imported: ${route.name}`, 'success');
+
+                this.closeActivitySegmentsModal();
+                this.closeSegmentImportModal();
+                window.fileUploader.hideLoadingState();
+            }
+
+        } catch (error) {
+            console.error('❌ Error importing segment:', error);
+            this.showNotification(`❌ ${error.message}`, 'error');
         }
     }
 }

@@ -71,6 +71,20 @@ export default {
                 if (url.pathname === '/api/strava/year-coin') {
                     return await createYearCoin(checkToken.authToken, url.searchParams);
                 }
+
+                // Segment endpoints - check import-segment before segments/:id to avoid route collision
+                if (url.pathname.startsWith('/api/strava/import-segment/')) {
+                    const segmentId = url.pathname.split('/')[4];
+                    return await importSegmentAsRoute(checkToken.authToken, segmentId);
+                }
+                if (url.pathname.match(/^\/api\/strava\/segments\/\d+$/)) {
+                    const segmentId = url.pathname.split('/')[4];
+                    return await getSegment(checkToken.authToken, segmentId);
+                }
+                if (url.pathname.match(/^\/api\/strava\/activities\/\d+$/)) {
+                    const activityId = url.pathname.split('/')[4];
+                    return await getActivity(checkToken.authToken, activityId);
+                }
             }
 
             // 404 for unknown paths
@@ -1081,5 +1095,267 @@ function resampleRoute(route, targetPointCount) {
     return {
         ...route,
         points: resampledPoints
+    };
+}
+
+// --- Segment Endpoints ---
+
+// Get individual activity details (including segment_efforts)
+async function getActivity(authToken, activityId) {
+    console.log(`📊 Fetching activity ${activityId} with segment efforts`);
+
+    try {
+        const response = await fetch(
+            `https://www.strava.com/api/v3/activities/${activityId}`,
+            {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Accept': 'application/json',
+                },
+            }
+        );
+
+        if (!response.ok) {
+            const errorData = await response.text();
+            console.error('❌ Failed to fetch activity:', response.status, errorData);
+            return new Response(JSON.stringify({
+                error: 'Strava API error',
+                status: response.status,
+                message: `Failed to fetch activity ${activityId}`
+            }), {
+                status: response.status,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            });
+        }
+
+        const activity = await response.json();
+        console.log(`✅ Fetched activity: ${activity.name} (${activity.segment_efforts?.length || 0} segments)`);
+
+        return new Response(JSON.stringify(activity), {
+            status: 200,
+            headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'private, max-age=3600', // Cache for 1 hour
+                ...corsHeaders,
+            },
+        });
+
+    } catch (error) {
+        console.error('❌ Error fetching activity:', error);
+        return new Response(JSON.stringify({
+            error: 'Network error',
+            message: 'Failed to connect to Strava API'
+        }), {
+            status: 500,
+            headers: {
+                'Content-Type': 'application/json',
+                ...corsHeaders,
+            },
+        });
+    }
+}
+
+// Get segment details
+async function getSegment(authToken, segmentId) {
+    console.log(`🏔️ Fetching segment ${segmentId}`);
+
+    try {
+        const response = await fetch(
+            `https://www.strava.com/api/v3/segments/${segmentId}`,
+            {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Accept': 'application/json',
+                },
+            }
+        );
+
+        if (!response.ok) {
+            const errorData = await response.text();
+            console.error('❌ Failed to fetch segment:', response.status, errorData);
+            return new Response(JSON.stringify({
+                error: 'Strava API error',
+                status: response.status,
+                message: `Failed to fetch segment ${segmentId}`
+            }), {
+                status: response.status,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            });
+        }
+
+        const segment = await response.json();
+        console.log(`✅ Fetched segment: ${segment.name}`);
+
+        return new Response(JSON.stringify(segment), {
+            status: 200,
+            headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'private, max-age=3600', // Cache for 1 hour
+                ...corsHeaders,
+            },
+        });
+
+    } catch (error) {
+        console.error('❌ Error fetching segment:', error);
+        return new Response(JSON.stringify({
+            error: 'Network error',
+            message: 'Failed to connect to Strava API'
+        }), {
+            status: 500,
+            headers: {
+                'Content-Type': 'application/json',
+                ...corsHeaders,
+            },
+        });
+    }
+}
+
+// Import segment as route (fetch segment + streams, convert to route format)
+async function importSegmentAsRoute(authToken, segmentId) {
+    console.log(`📥 Importing segment ${segmentId} as route`);
+
+    try {
+        // Fetch both segment details and streams in parallel
+        const [segmentResponse, streamsResponse] = await Promise.all([
+            fetch(`https://www.strava.com/api/v3/segments/${segmentId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Accept': 'application/json',
+                },
+            }),
+            fetch(`https://www.strava.com/api/v3/segments/${segmentId}/streams?keys=latlng,altitude,distance&key_by_type=true`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Accept': 'application/json',
+                },
+            })
+        ]);
+
+        if (!segmentResponse.ok) {
+            const errorData = await segmentResponse.text();
+            console.error('❌ Failed to fetch segment:', segmentResponse.status, errorData);
+            return new Response(JSON.stringify({
+                error: 'Strava API error',
+                status: segmentResponse.status,
+                message: segmentResponse.status === 404
+                    ? `Segment ${segmentId} not found`
+                    : segmentResponse.status === 403
+                        ? `Segment ${segmentId} is private or inaccessible`
+                        : `Failed to fetch segment ${segmentId}`
+            }), {
+                status: segmentResponse.status,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            });
+        }
+
+        if (!streamsResponse.ok) {
+            const errorData = await streamsResponse.text();
+            console.error('❌ Failed to fetch streams:', streamsResponse.status, errorData);
+            return new Response(JSON.stringify({
+                error: 'Strava API error',
+                status: streamsResponse.status,
+                message: `Failed to fetch GPS data for segment ${segmentId}`
+            }), {
+                status: streamsResponse.status,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            });
+        }
+
+        const segment = await segmentResponse.json();
+        const streams = await streamsResponse.json();
+
+        // Convert to route format
+        const route = convertStravaSegmentToRoute(segment, streams);
+
+        console.log(`✅ Segment ${segmentId} converted to route successfully`);
+
+        return new Response(JSON.stringify(route), {
+            status: 200,
+            headers: {
+                'Content-Type': 'application/json',
+                ...corsHeaders,
+            },
+        });
+
+    } catch (error) {
+        console.error('❌ Error importing segment as route:', error);
+        return new Response(JSON.stringify({
+            error: 'Import error',
+            message: error.message || 'Failed to import segment'
+        }), {
+            status: 500,
+            headers: {
+                'Content-Type': 'application/json',
+                ...corsHeaders,
+            },
+        });
+    }
+}
+
+// Convert Strava segment and streams to route format
+function convertStravaSegmentToRoute(segment, streams) {
+    const { latlng, altitude, distance } = streams;
+
+    if (!latlng || !latlng.data || latlng.data.length === 0) {
+        throw new Error('No GPS data available for this segment');
+    }
+
+    // Map GPS points with elevation
+    const points = latlng.data.map((coord, index) => ({
+        lat: coord[0],
+        lon: coord[1],
+        elevation: altitude?.data ? altitude.data[index] || 0 : 0,
+        timestamp: null // Segments don't have timestamps
+    }));
+
+    // Calculate elevation gain from points
+    let elevationGain = 0;
+    for (let i = 1; i < points.length; i++) {
+        const elevDiff = points[i].elevation - points[i - 1].elevation;
+        if (elevDiff > 0) {
+            elevationGain += elevDiff;
+        }
+    }
+
+    // Return route in the format expected by the client
+    return {
+        id: `strava_segment_${segment.id}`, // Use unique ID to prevent collisions
+        filename: `${segment.name}.gpx`,
+        name: segment.name,
+        type: 'segment',
+        points: points,
+        distance: segment.distance / 1000, // Convert meters to km
+        elevationGain: elevationGain,
+        duration: null, // Segments don't have duration
+        startTime: null, // Segments don't have timestamps
+        source: 'strava-segment',
+        metadata: {
+            stravaSegmentId: segment.id,
+            averageGrade: segment.average_grade || 0,
+            maximumGrade: segment.maximum_grade || 0,
+            climbCategory: segment.climb_category || 0,
+            elevationHigh: segment.elevation_high || 0,
+            elevationLow: segment.elevation_low || 0,
+            city: segment.city || null,
+            state: segment.state || null,
+            country: segment.country || null,
+            imported: new Date().toISOString()
+        }
     };
 }
