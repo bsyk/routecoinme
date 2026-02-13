@@ -341,20 +341,15 @@ class FileUploadHandler {
     }
 
     // Helper: Add route to all visualizations
-    async addRouteToAllVisualizations(route) {
+    addRouteToAllVisualizations(route) {
         // Add to map
         if (this.mapViz?.map) {
             this.mapViz.addRoute(route);
         }
 
-        // Add to 3D viewer if it's active and initialized
-        if (this.currentViewMode === '3d' && this.is3DInitialized && this.viewer3D?.isInitialized) {
-            try {
-                await this.viewer3D.addRoute(route);
-            } catch (error) {
-                console.error(`❌ Failed to add route to 3D viewer:`, error);
-            }
-        }
+        // 3D coin viewer is refreshed separately via refresh3DViewer() after
+        // aggregation — it always displays a single aggregated coin STL, so
+        // individual route additions are not applicable.
     }
 
     // Legacy method - now delegated to event system
@@ -686,14 +681,11 @@ class FileUploadHandler {
         const saveBtn = document.getElementById('save-coin-btn');
         const downloadBtn = document.getElementById('download-coin-btn');
         const downloadStlBtn = document.getElementById('download-stl-btn');
-        const clearBtn = document.getElementById('clear-coin-btn');
-
-        if (!saveBtn || !downloadBtn || !downloadStlBtn || !clearBtn) {
+        if (!saveBtn || !downloadBtn || !downloadStlBtn) {
             console.error('❌ Sidebar buttons not found:', {
                 saveBtn: !!saveBtn,
                 downloadBtn: !!downloadBtn,
                 downloadStlBtn: !!downloadStlBtn,
-                clearBtn: !!clearBtn
             });
             throw new Error('Required sidebar buttons not found in DOM');
         }
@@ -713,11 +705,6 @@ class FileUploadHandler {
         downloadStlBtn.addEventListener('click', () => {
             console.log('🖨️ Download STL button clicked');
             this.handleDownloadSTLClick();
-        });
-
-        clearBtn.addEventListener('click', () => {
-            console.log('✖️ Clear button clicked');
-            this.handleClearCoinClick();
         });
 
         console.log('✅ Sidebar controls setup complete');
@@ -1130,8 +1117,6 @@ class FileUploadHandler {
         const saveBtn = document.getElementById('save-coin-btn');
         const downloadBtn = document.getElementById('download-coin-btn');
         const downloadStlBtn = document.getElementById('download-stl-btn');
-        const clearBtn = document.getElementById('clear-coin-btn');
-
         if (viewCoinBtn) {
             viewCoinBtn.disabled = !hasSelectedRoutes && !hasAggregatedRoute;
         }
@@ -1149,10 +1134,6 @@ class FileUploadHandler {
         if (downloadStlBtn) {
             // Enable if we have any selected routes (we'll aggregate on-the-fly if needed)
             downloadStlBtn.disabled = !hasSelectedRoutes && !hasAggregatedRoute;
-        }
-
-        if (clearBtn) {
-            clearBtn.disabled = !this.isShowingAggregated && !this.activeCoin;
         }
     }
 
@@ -2612,30 +2593,13 @@ class FileUploadHandler {
         console.log('🔧 3D viewer initialization result:', initResult);
 
         if (initResult) {
-            // Add selected routes to the 3D viewer
-            console.log(`🔄 Attempting to add selected routes to 3D viewer...`);
-
-            if (this.isShowingAggregated && this.aggregatedRoute) {
-                // Show aggregated route
+            // The coin viewer always displays a single aggregated coin STL.
+            if (this.aggregatedRoute) {
                 console.log(`➕ Adding aggregated route to 3D viewer:`, this.aggregatedRoute.filename);
                 await this.viewer3D.addRoute(this.aggregatedRoute);
-            } else {
-                // Show selected individual routes
-                for (const route of this.uploadedRoutes) {
-                    if (this.selectedRoutes.has(route.id)) {
-                        console.log(`➕ Adding selected route to 3D viewer:`, route.filename);
-
-                        if (!route.points || route.points.length === 0) {
-                            console.warn(`⚠️ Route ${route.filename} has no points data!`);
-                            continue;
-                        }
-
-                        await this.viewer3D.addRoute(route);
-                    }
-                }
             }
 
-            console.log('🎮 3D visualization initialized with selected routes');
+            console.log('🎮 3D visualization initialized');
 
             // Setup resize handler
             this.setup3DResizeHandler();
@@ -2666,27 +2630,12 @@ class FileUploadHandler {
         try {
             console.log('🔄 Refreshing 3D viewer with current routes...');
 
-            // Clear all existing routes using the proper method
-            this.viewer3D.clearAllRoutes();
-
-            // Add back the routes that should be displayed
-            if (this.isShowingAggregated && this.aggregatedRoute) {
-                console.log(`➕ Adding aggregated route to 3D viewer: ${this.aggregatedRoute.filename}`);
+            // The coin viewer always displays a single aggregated coin STL.
+            if (this.aggregatedRoute) {
+                console.log(`➕ Loading aggregated route into 3D viewer: ${this.aggregatedRoute.filename}`);
                 await this.viewer3D.addRoute(this.aggregatedRoute);
             } else {
-                // Add back only selected routes
-                for (const route of this.uploadedRoutes) {
-                    if (this.selectedRoutes.has(route.id)) {
-                        console.log(`➕ Adding selected route to 3D viewer: ${route.filename}`);
-                        await this.viewer3D.addRoute(route);
-                    }
-                }
-            }
-
-            // After adding routes, make sure camera is positioned to show all routes
-            if (this.viewer3D.fitToView) {
-                console.log('📷 Repositioning camera to fit all routes...');
-                this.viewer3D.fitToView();
+                this.viewer3D.clearAllRoutes();
             }
 
             console.log('✅ 3D viewer refreshed successfully');
@@ -2695,32 +2644,12 @@ class FileUploadHandler {
         }
     }
 
-    // Add a route to 3D viewer if it's initialized (for newly uploaded routes)
-    async addRouteTo3DViewerIfInitialized(route) {
-        // Only proceed if we're in 3D view mode and viewer is initialized
-        if (this.currentViewMode !== '3d' || !this.is3DInitialized || !this.viewer3D?.isInitialized) {
-            console.log(`📝 3D viewer not active/initialized, route will be added when 3D view is accessed: ${route.filename}`);
-            return;
-        }
-
-        // Only add if route is selected for display and we're not showing aggregated route
-        if (!this.isShowingAggregated && this.selectedRoutes.has(route.id)) {
-            console.log(`➕ Adding new selected route to initialized 3D viewer: ${route.filename}`);
-
-            try {
-                await this.viewer3D.addRoute(route);
-
-                // Ensure camera is positioned to show the new route
-                if (this.viewer3D.fitToView) {
-                    console.log('📷 Repositioning camera to show newly added route...');
-                    this.viewer3D.fitToView();
-                }
-
-                console.log(`✅ Successfully added route to 3D viewer: ${route.filename}`);
-            } catch (error) {
-                console.error(`❌ Failed to add route to 3D viewer: ${route.filename}`, error);
-            }
-        }
+    // Refresh the 3D coin viewer when a new route is added (if active).
+    // The coin viewer always shows the aggregated route, so individual route
+    // additions just trigger a refresh after re-aggregation.
+    addRouteTo3DViewerIfInitialized() {
+        // Re-aggregation is handled by refreshAggregatedRoute which calls
+        // refresh3DViewer, so nothing to do here for the coin viewer.
     }
 
     // Update the route list display
@@ -3570,12 +3499,6 @@ class FileUploadHandler {
     fitToView3D() {
         if (this.viewer3D) {
             this.viewer3D.fitToView();
-        }
-    }
-
-    resetView3D() {
-        if (this.viewer3D) {
-            this.viewer3D.resetView();
         }
     }
 
