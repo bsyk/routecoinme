@@ -180,10 +180,12 @@ export function applyVerticalExaggeration(points, options) {
     console.log(`  📏 Fixed vertical exaggeration: ${options.vertical}x (${currentRange.toFixed(2)}mm → ${finalRange.toFixed(2)}mm)`);
   }
 
+  const minPathHeight = options.minPathHeight || 0;
+
   return points.map(point => ({
     x: point.x,
     y: point.y,
-    z: (point.z - minZ) * verticalScale
+    z: (point.z - minZ) * verticalScale + minPathHeight
   }));
 }
 

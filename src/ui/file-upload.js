@@ -725,12 +725,14 @@ class FileUploadHandler {
         const elevationHeightInput = document.getElementById('stl-elevation-height-input');
         const routeThicknessInput = document.getElementById('stl-route-thickness-input');
         const edgeMarginInput = document.getElementById('stl-edge-margin-input');
+        const minPathHeightInput = document.getElementById('stl-min-path-height-input');
         const includeBaseCheckbox = document.getElementById('stl-include-base');
 
         const diameterCm = parseFloat(diameterInput?.value) || 8;
         const elevationHeight = parseFloat(elevationHeightInput?.value) || 20;
         const routeThickness = parseFloat(routeThicknessInput?.value) || 1;
         const edgeMargin = parseFloat(edgeMarginInput?.value) || 1;
+        const minPathHeight = parseFloat(minPathHeightInput?.value) ?? 1;
         const includeBase = includeBaseCheckbox?.checked ?? true;
 
         return {
@@ -738,7 +740,8 @@ class FileUploadHandler {
             base: includeBase ? 3 : 0,
             targetHeight: elevationHeight,
             buffer: routeThickness / 2,
-            edgeMargin: edgeMargin
+            edgeMargin: edgeMargin,
+            minPathHeight: minPathHeight
         };
     }
 
@@ -749,6 +752,7 @@ class FileUploadHandler {
             'stl-elevation-height-input',
             'stl-route-thickness-input',
             'stl-edge-margin-input',
+            'stl-min-path-height-input',
             'stl-include-base'
         ];
 
