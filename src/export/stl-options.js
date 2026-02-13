@@ -17,6 +17,7 @@ export const DEFAULT_STL_OPTIONS = {
   vertical: 10,            // Vertical exaggeration multiplier (only used if targetHeight is 0)
   base: 3,                 // Base plate height (mm) - 0 = no base plate
   baseDiameter: 80,        // Base plate diameter (mm) - circular base, also used for scaling route
+  minPathHeight: 1,        // Minimum height of lowest route point above base/ground (mm)
   zcut: true,              // Trim at minimum elevation (vs absolute sea level)
 
   // Print bed dimensions (in millimeters) - only used if base=0

@@ -141,9 +141,10 @@ describe('Route Geometry Builder', () => {
 
       // With zcut=true, min elevation becomes 0
       // Range is 200, target is 50, so scale is 50/200 = 0.25
-      expect(exaggerated[0].z).toBe(0);
-      expect(exaggerated[1].z).toBe(25); // (100 - 0) * 0.25
-      expect(exaggerated[2].z).toBe(50); // (200 - 0) * 0.25
+      // minPathHeight (1mm) is added as floor offset
+      expect(exaggerated[0].z).toBe(1);       // (0 - 0) * 0.25 + 1
+      expect(exaggerated[1].z).toBe(26);      // (100 - 0) * 0.25 + 1
+      expect(exaggerated[2].z).toBe(51);      // (200 - 0) * 0.25 + 1
 
       // x and y should be unchanged
       expect(exaggerated[0].x).toBe(0);
@@ -161,9 +162,10 @@ describe('Route Geometry Builder', () => {
       const exaggerated = applyVerticalExaggeration(points, options);
 
       // With targetHeight=0, use vertical multiplier
-      expect(exaggerated[0].z).toBe(0);
-      expect(exaggerated[1].z).toBe(300); // (100 - 0) * 3
-      expect(exaggerated[2].z).toBe(600); // (200 - 0) * 3
+      // minPathHeight (1mm) is added as floor offset
+      expect(exaggerated[0].z).toBe(1);   // (0 - 0) * 3 + 1
+      expect(exaggerated[1].z).toBe(301); // (100 - 0) * 3 + 1
+      expect(exaggerated[2].z).toBe(601); // (200 - 0) * 3 + 1
     });
 
     it('should respect zcut=false option', () => {
@@ -176,8 +178,9 @@ describe('Route Geometry Builder', () => {
       const exaggerated = applyVerticalExaggeration(points, options);
 
       // With zcut=false, absolute elevation is used
-      expect(exaggerated[0].z).toBe(200); // 100 * 2
-      expect(exaggerated[1].z).toBe(400); // 200 * 2
+      // minPathHeight (1mm) is added as floor offset
+      expect(exaggerated[0].z).toBe(201); // 100 * 2 + 1
+      expect(exaggerated[1].z).toBe(401); // 200 * 2 + 1
     });
   });
 
