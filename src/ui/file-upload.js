@@ -710,10 +710,67 @@ class FileUploadHandler {
         console.log('✅ Sidebar controls setup complete');
 
         this.setupSidebarDrawer();
+        this.setupSTLSettingsListeners();
         this.updateDomainControlState();
         this.updateCoinActionButtons();
         this.updateSidebarControlsState();
         this.alignSidebarWithViewer();
+    }
+
+    // Read current STL options from sidebar inputs
+    getSTLOptionsFromSidebar() {
+        const diameterInput = document.getElementById('stl-diameter-input');
+        const elevationHeightInput = document.getElementById('stl-elevation-height-input');
+        const routeThicknessInput = document.getElementById('stl-route-thickness-input');
+        const edgeMarginInput = document.getElementById('stl-edge-margin-input');
+        const includeBaseCheckbox = document.getElementById('stl-include-base');
+
+        const diameterCm = parseFloat(diameterInput?.value) || 8;
+        const elevationHeight = parseFloat(elevationHeightInput?.value) || 20;
+        const routeThickness = parseFloat(routeThicknessInput?.value) || 1;
+        const edgeMargin = parseFloat(edgeMarginInput?.value) || 1;
+        const includeBase = includeBaseCheckbox?.checked ?? true;
+
+        return {
+            baseDiameter: diameterCm * 10,
+            base: includeBase ? 3 : 0,
+            targetHeight: elevationHeight,
+            buffer: routeThickness / 2,
+            edgeMargin: edgeMargin
+        };
+    }
+
+    // Set up live preview listeners for STL settings in sidebar
+    setupSTLSettingsListeners() {
+        const inputIds = [
+            'stl-diameter-input',
+            'stl-elevation-height-input',
+            'stl-route-thickness-input',
+            'stl-edge-margin-input',
+            'stl-include-base'
+        ];
+
+        let debounceTimer = null;
+
+        const onSettingChanged = () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                if (this.currentViewMode === '3d' && this.viewer3D?.isInitialized) {
+                    const options = this.getSTLOptionsFromSidebar();
+                    this.viewer3D.updateOptions(options);
+                }
+            }, 300);
+        };
+
+        inputIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('change', onSettingChanged);
+                if (el.type === 'number') {
+                    el.addEventListener('input', onSettingChanged);
+                }
+            }
+        });
     }
 
     setupSidebarDrawer() {
@@ -1952,136 +2009,12 @@ class FileUploadHandler {
             }
         }
 
-        // Show STL options modal
-        this.showSTLOptionsModal(routeToDownload);
-    }
+        // Download directly using current sidebar settings
+        const { type, id } = routeToDownload;
+        const options = this.getSTLOptionsFromSidebar();
 
-    showSTLOptionsModal(routeToDownload) {
-        console.log('🖨️ Opening STL options modal for:', routeToDownload);
+        console.log('📊 STL download options:', options);
 
-        // Store route info for later use
-        this.pendingSTLDownload = routeToDownload;
-
-        // Get modal elements
-        const modal = document.getElementById('stl-options-modal');
-        const diameterInput = document.getElementById('stl-diameter-input');
-        const elevationHeightInput = document.getElementById('stl-elevation-height-input');
-        const routeThicknessInput = document.getElementById('stl-route-thickness-input');
-        const edgeMarginInput = document.getElementById('stl-edge-margin-input');
-        const includeBaseCheckbox = document.getElementById('stl-include-base');
-        const confirmBtn = document.getElementById('stl-download-confirm-btn');
-
-        console.log('📋 Modal elements:', {
-            modal: !!modal,
-            diameterInput: !!diameterInput,
-            elevationHeightInput: !!elevationHeightInput,
-            routeThicknessInput: !!routeThicknessInput,
-            edgeMarginInput: !!edgeMarginInput,
-            includeBaseCheckbox: !!includeBaseCheckbox,
-            confirmBtn: !!confirmBtn
-        });
-
-        if (!modal || !diameterInput || !elevationHeightInput || !routeThicknessInput || !edgeMarginInput || !includeBaseCheckbox || !confirmBtn) {
-            console.error('❌ STL options modal elements not found');
-            console.error('Missing elements:', {
-                modal: !modal ? 'modal' : null,
-                diameterInput: !diameterInput ? 'diameterInput' : null,
-                elevationHeightInput: !elevationHeightInput ? 'elevationHeightInput' : null,
-                routeThicknessInput: !routeThicknessInput ? 'routeThicknessInput' : null,
-                edgeMarginInput: !edgeMarginInput ? 'edgeMarginInput' : null,
-                includeBaseCheckbox: !includeBaseCheckbox ? 'includeBaseCheckbox' : null,
-                confirmBtn: !confirmBtn ? 'confirmBtn' : null
-            });
-            return;
-        }
-
-        // Reset to defaults (matching DEFAULT_STL_OPTIONS)
-        diameterInput.value = '8';              // 80mm / 10 = 8cm
-        elevationHeightInput.value = '20';      // targetHeight: 20mm
-        routeThicknessInput.value = '1';        // buffer: 0.5mm * 2 = 1mm path width
-        edgeMarginInput.value = '1';            // clearance: 1mm (reduced from 2mm)
-        includeBaseCheckbox.checked = true;     // base: 3mm
-
-        // Show modal
-        console.log('✅ Showing modal');
-        modal.style.display = 'flex';
-
-        // Remove any existing event listeners and add new one
-        const newConfirmBtn = confirmBtn.cloneNode(true);
-        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-
-        newConfirmBtn.addEventListener('click', () => {
-            this.confirmSTLDownload();
-        });
-
-        // Close on escape key
-        const escapeHandler = (e) => {
-            if (e.key === 'Escape') {
-                this.closeSTLOptionsModal();
-                document.removeEventListener('keydown', escapeHandler);
-            }
-        };
-        document.addEventListener('keydown', escapeHandler);
-    }
-
-    closeSTLOptionsModal() {
-        const modal = document.getElementById('stl-options-modal');
-        if (modal) {
-            modal.style.display = 'none';
-        }
-        this.pendingSTLDownload = null;
-    }
-
-    async confirmSTLDownload() {
-        if (!this.pendingSTLDownload) {
-            console.error('❌ No pending STL download');
-            return;
-        }
-
-        // Store the download info before closing modal (which clears it)
-        const { type, id } = this.pendingSTLDownload;
-
-        // Get options from modal
-        const diameterInput = document.getElementById('stl-diameter-input');
-        const elevationHeightInput = document.getElementById('stl-elevation-height-input');
-        const routeThicknessInput = document.getElementById('stl-route-thickness-input');
-        const edgeMarginInput = document.getElementById('stl-edge-margin-input');
-        const includeBaseCheckbox = document.getElementById('stl-include-base');
-
-        // Parse values with defaults
-        const diameterCm = parseFloat(diameterInput.value) || 8;
-        const elevationHeight = parseFloat(elevationHeightInput.value) || 20;
-        const routeThickness = parseFloat(routeThicknessInput.value) || 1;
-        const edgeMargin = parseFloat(edgeMarginInput.value) || 1;
-        const includeBase = includeBaseCheckbox.checked;
-
-        // Convert diameter from cm to mm
-        const diameterMm = diameterCm * 10;
-
-        // Convert route thickness (total width) to buffer (half-width)
-        const buffer = routeThickness / 2;
-
-        // Build STL options
-        const options = {
-            baseDiameter: diameterMm,
-            base: includeBase ? 3 : 0,
-            targetHeight: elevationHeight,
-            buffer: buffer,
-            edgeMargin: edgeMargin  // Pass the user-specified margin
-        };
-
-        console.log('📊 STL options:', {
-            diameter: `${diameterCm}cm (${diameterMm}mm)`,
-            elevationHeight: `${elevationHeight}mm`,
-            routeThickness: `${routeThickness}mm (buffer: ${buffer}mm)`,
-            edgeMargin: `${edgeMargin}mm`,
-            includeBase: includeBase
-        });
-
-        // Close modal (this clears pendingSTLDownload)
-        this.closeSTLOptionsModal();
-
-        // Download based on type (using locally stored values)
         if (type === 'coin') {
             await this.downloadCoinSTL(id, options);
         } else {
@@ -2596,7 +2529,8 @@ class FileUploadHandler {
             // The coin viewer always displays a single aggregated coin STL.
             if (this.aggregatedRoute) {
                 console.log(`➕ Adding aggregated route to 3D viewer:`, this.aggregatedRoute.filename);
-                await this.viewer3D.addRoute(this.aggregatedRoute);
+                const stlOptions = this.getSTLOptionsFromSidebar();
+                await this.viewer3D.addRoute(this.aggregatedRoute, stlOptions);
             }
 
             console.log('🎮 3D visualization initialized');
@@ -2633,7 +2567,8 @@ class FileUploadHandler {
             // The coin viewer always displays a single aggregated coin STL.
             if (this.aggregatedRoute) {
                 console.log(`➕ Loading aggregated route into 3D viewer: ${this.aggregatedRoute.filename}`);
-                await this.viewer3D.addRoute(this.aggregatedRoute);
+                const stlOptions = this.getSTLOptionsFromSidebar();
+                await this.viewer3D.addRoute(this.aggregatedRoute, stlOptions);
             } else {
                 this.viewer3D.clearAllRoutes();
             }

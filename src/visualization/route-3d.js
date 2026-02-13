@@ -11,6 +11,7 @@ class Route3DVisualization {
         this.ovViewer = null;
         this.isInitialized = false;
         this.currentRouteId = null;
+        this.currentRouteData = null;
 
         // Resolves when the current OV load finishes (or immediately if idle).
         // OV's ThreeModelLoader silently drops LoadModel calls while inProgress,
@@ -86,7 +87,7 @@ class Route3DVisualization {
     }
 
     // Add a route by generating its STL and loading into OV
-    async addRoute(routeData) {
+    async addRoute(routeData, stlOptions = DEFAULT_STL_OPTIONS) {
         if (!this.isInitialized || !this.ovViewer) {
             console.warn('3D viewer not initialized');
             return false;
@@ -97,11 +98,13 @@ class Route3DVisualization {
             return false;
         }
 
+        this.currentRouteData = routeData;
+
         console.log(`🪙 Generating coin STL for: ${routeData.filename || routeData.id}`);
 
         try {
             // Generate STL blob using the existing export pipeline
-            const stlBlob = await exportToSTL(routeData, DEFAULT_STL_OPTIONS);
+            const stlBlob = await exportToSTL(routeData, stlOptions);
 
             // Wait for any in-flight OV load to finish before starting a new one.
             // OV's ThreeModelLoader.LoadModel silently returns if inProgress is true.
@@ -123,6 +126,14 @@ class Route3DVisualization {
             this._finishLoad();
             return false;
         }
+    }
+
+    // Re-render the current route with new STL options (live preview)
+    async updateOptions(stlOptions) {
+        if (this.currentRouteData) {
+            return this.addRoute(this.currentRouteData, stlOptions);
+        }
+        return false;
     }
 
     // Clear all routes from the viewer
@@ -175,6 +186,7 @@ class Route3DVisualization {
         this.containerElement = null;
         this.isInitialized = false;
         this.currentRouteId = null;
+        this.currentRouteData = null;
         this._finishLoad();
         this._loadDone = Promise.resolve();
     }
