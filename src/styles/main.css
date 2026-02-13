@@ -922,8 +922,9 @@ body.sidebar-open {
         font-size: 0.8rem;
     }
 
-    .radio-option {
-        font-size: 0.85rem;
+    .toggle-btn {
+        font-size: 0.75rem;
+        padding: 0.35rem 0.4rem;
     }
 }
 
@@ -978,6 +979,55 @@ body.sidebar-open {
 }
 
 .radio-option-disabled input[type="radio"] {
+    cursor: not-allowed;
+}
+
+.toggle-input {
+    display: none;
+}
+
+.toggle-group {
+    display: flex;
+    gap: 0;
+}
+
+.toggle-btn {
+    flex: 1;
+    background: white;
+    border: 2px solid var(--border);
+    padding: 0.4rem 0.5rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+    text-align: center;
+    user-select: none;
+}
+
+.toggle-btn:first-of-type {
+    border-radius: var(--border-radius) 0 0 var(--border-radius);
+    border-right: 1px solid var(--border);
+}
+
+.toggle-btn:last-of-type {
+    border-radius: 0 var(--border-radius) var(--border-radius) 0;
+    border-left: 1px solid var(--border);
+}
+
+.toggle-btn.active {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+.toggle-btn:hover:not(.active):not(.toggle-btn-disabled) {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.toggle-btn-disabled {
+    opacity: 0.5;
     cursor: not-allowed;
 }
 

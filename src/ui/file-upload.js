@@ -635,7 +635,7 @@ class FileUploadHandler {
     setupSidebarControls() {
         console.log('⚙️ Setting up sidebar controls');
 
-        // Set up elevation mode radios
+        // Set up elevation mode toggle buttons
         const elevationRadios = document.querySelectorAll('input[name="elevation-mode"]');
         elevationRadios.forEach(radio => {
             radio.addEventListener('change', (event) => {
@@ -643,6 +643,7 @@ class FileUploadHandler {
                     return;
                 }
                 if (event.target.checked) {
+                    this.syncToggleActive(elevationRadios);
                     this.aggregationOptions.elevationMode = event.target.value;
                     this.onAggregationOptionsChanged('elevation-mode');
                 }
@@ -663,7 +664,7 @@ class FileUploadHandler {
             });
         }
 
-        // Set up domain radios
+        // Set up domain toggle buttons
         const domainRadios = document.querySelectorAll('input[name="aggregation-domain"]');
         domainRadios.forEach(radio => {
             radio.addEventListener('change', (event) => {
@@ -671,6 +672,7 @@ class FileUploadHandler {
                     return;
                 }
                 if (event.target.checked) {
+                    this.syncToggleActive(domainRadios);
                     this.aggregationOptions.domain = event.target.value;
                     this.onAggregationOptionsChanged('aggregation-domain');
                 }
@@ -769,6 +771,16 @@ class FileUploadHandler {
                 if (el.type === 'number') {
                     el.addEventListener('input', onSettingChanged);
                 }
+            }
+        });
+    }
+
+    // Sync .active class on toggle-btn labels to match radio checked state
+    syncToggleActive(radios) {
+        radios.forEach(r => {
+            const label = document.querySelector(`label[for="${r.id}"]`);
+            if (label) {
+                label.classList.toggle('active', r.checked);
             }
         });
     }
@@ -1036,7 +1048,7 @@ class FileUploadHandler {
         const isFictional = overlayValue && overlayValue !== 'real';
         const timeRadio = document.getElementById('domain-time');
         const distanceRadio = document.getElementById('domain-distance');
-        const timeRadioLabel = timeRadio?.closest('.radio-option');
+        const timeLabel = timeRadio ? document.querySelector(`label[for="domain-time"]`) : null;
         const controlsLocked = Boolean(this.activeCoin);
 
         if (timeRadio) {
@@ -1046,21 +1058,17 @@ class FileUploadHandler {
                 timeRadio.checked = false;
             }
 
-            if (timeRadioLabel) {
+            if (timeLabel) {
                 const tooltip = controlsLocked
                     ? 'Viewing a saved coin. Switch back to Routes to change distribution.'
                     : 'Select a fictional overlay to unlock time distribution.';
                 if (shouldDisableTime) {
-                    timeRadioLabel.setAttribute('title', tooltip);
+                    timeLabel.setAttribute('title', tooltip);
                 } else {
-                    timeRadioLabel.removeAttribute('title');
+                    timeLabel.removeAttribute('title');
                 }
+                timeLabel.classList.toggle('toggle-btn-disabled', shouldDisableTime);
             }
-        }
-
-        if (timeRadioLabel) {
-            const shouldDisableTime = controlsLocked || !isFictional;
-            timeRadioLabel.classList.toggle('radio-option-disabled', shouldDisableTime);
         }
 
         if (!isFictional) {
@@ -1069,6 +1077,10 @@ class FileUploadHandler {
                 distanceRadio.checked = true;
             }
         }
+
+        // Sync active classes
+        const domainRadios = document.querySelectorAll('input[name="aggregation-domain"]');
+        this.syncToggleActive(domainRadios);
     }
 
     updateSidebarControlsState() {
@@ -1087,9 +1099,9 @@ class FileUploadHandler {
         const elevationRadios = document.querySelectorAll('input[name="elevation-mode"]');
         elevationRadios.forEach(radio => {
             radio.disabled = controlsLocked;
-            const label = radio.closest('.radio-option');
+            const label = document.querySelector(`label[for="${radio.id}"]`);
             if (label) {
-                label.classList.toggle('radio-option-disabled', controlsLocked);
+                label.classList.toggle('toggle-btn-disabled', controlsLocked);
                 if (controlsLocked) {
                     label.setAttribute('title', 'Viewing a saved coin. Switch back to Routes to change elevation mode.');
                 } else {
@@ -1107,10 +1119,10 @@ class FileUploadHandler {
                 radio.disabled = controlsLocked;
             }
 
-            const label = radio.closest('.radio-option');
+            const label = document.querySelector(`label[for="${radio.id}"]`);
             if (label) {
                 const disabled = radio.disabled;
-                label.classList.toggle('radio-option-disabled', disabled);
+                label.classList.toggle('toggle-btn-disabled', disabled);
 
                 if (disabled) {
                     let tooltip;
@@ -1162,6 +1174,10 @@ class FileUploadHandler {
         } finally {
             this.suppressOptionEvents = false;
         }
+
+        // Sync toggle active classes after programmatic radio changes
+        const elevationRadios = document.querySelectorAll('input[name="elevation-mode"]');
+        this.syncToggleActive(elevationRadios);
 
         this.updateDomainControlState();
         this.updateSidebarControlsState();

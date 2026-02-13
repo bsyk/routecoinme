@@ -187,14 +187,12 @@
 
                         <div class="sidebar-group">
                             <span class="group-label">Elevation Mode</span>
-                            <label class="radio-option">
-                                <input type="radio" name="elevation-mode" id="elevation-mode-actual" value="actual" checked>
-                                <span>Actual Elevation</span>
-                            </label>
-                            <label class="radio-option">
-                                <input type="radio" name="elevation-mode" id="elevation-mode-cumulative" value="cumulative">
-                                <span>Cumulative Climbing</span>
-                            </label>
+                            <div class="toggle-group">
+                                <input type="radio" name="elevation-mode" id="elevation-mode-actual" value="actual" class="toggle-input" checked>
+                                <label for="elevation-mode-actual" class="toggle-btn active">Actual</label>
+                                <input type="radio" name="elevation-mode" id="elevation-mode-cumulative" value="cumulative" class="toggle-input">
+                                <label for="elevation-mode-cumulative" class="toggle-btn">Cumulative</label>
+                            </div>
                         </div>
 
                         <div class="sidebar-group">
@@ -211,15 +209,13 @@
 
                         <div class="sidebar-group">
                             <span class="group-label">Distribution</span>
-                            <label class="radio-option">
-                                <input type="radio" name="aggregation-domain" id="domain-distance" value="distance" checked>
-                                <span>Distance Based</span>
-                            </label>
-                            <label class="radio-option radio-option-disabled">
-                                <input type="radio" name="aggregation-domain" id="domain-time" value="time" disabled>
-                                <span>Time Based</span>
-                            </label>
-                            <p class="helper-text">Time distribution unlocks with a fictional overlay.</p>
+                            <div class="toggle-group">
+                                <input type="radio" name="aggregation-domain" id="domain-distance" value="distance" class="toggle-input" checked>
+                                <label for="domain-distance" class="toggle-btn active">Distance</label>
+                                <input type="radio" name="aggregation-domain" id="domain-time" value="time" class="toggle-input" disabled>
+                                <label for="domain-time" class="toggle-btn toggle-btn-disabled">Time</label>
+                            </div>
+                            <p class="helper-text">Time unlocks with a fictional overlay.</p>
                         </div>
 
                         <div class="sidebar-group" id="stl-settings-group">
