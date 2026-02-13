@@ -1799,6 +1799,7 @@ class FileUploadHandler {
             if (!this.activeCoin) {
                 this.isShowingAggregated = false;
             }
+            this.clearAllVisualizationsRoutes();
             this.updateCoinActionButtons();
             this.updateStatsDisplay();
             return;
@@ -1811,7 +1812,8 @@ class FileUploadHandler {
 
             console.log(`✅ Aggregated route refreshed (${reason}) -> ${aggregatedRoute.filename}`);
 
-            if (this.isShowingAggregated && this.currentViewMode === '3d' && this.is3DInitialized) {
+            this.isShowingAggregated = true;
+            if (this.currentViewMode === '3d' && this.is3DInitialized) {
                 this.refresh3DViewer();
             }
 
