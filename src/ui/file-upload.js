@@ -2492,14 +2492,6 @@ class FileUploadHandler {
         }
     }
 
-    // Refresh the 3D coin viewer when a new route is added (if active).
-    // The coin viewer always shows the aggregated route, so individual route
-    // additions just trigger a refresh after re-aggregation.
-    addRouteTo3DViewerIfInitialized() {
-        // Re-aggregation is handled by refreshAggregatedRoute which calls
-        // refresh3DViewer, so nothing to do here for the coin viewer.
-    }
-
     // Update the route list display
     updateRouteList() {
         const routeListContainer = document.getElementById('route-list');
