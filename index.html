@@ -176,13 +176,9 @@
                         <button id="sidebar-close-btn" class="sidebar-close-btn" type="button" aria-label="Close coin controls">×</button>
                         <h4>Coin Controls</h4>
 
-                        <div id="viewer-toggle-buttons" class="viewer-toggle-buttons">
-                            <button id="map-view-btn" class="viewer-toggle-btn active" type="button">
-                                🗺️ Map View
-                            </button>
-                            <button id="view-coin-btn" class="viewer-toggle-btn" type="button">
-                                🪙 Coin View
-                            </button>
+                        <div id="viewer-toggle-buttons" class="toggle-group">
+                            <button id="map-view-btn" class="toggle-btn active" type="button">🗺️ Map</button>
+                            <button id="view-coin-btn" class="toggle-btn" type="button">🪙 Coin</button>
                         </div>
 
                         <div class="sidebar-group">
@@ -207,15 +203,14 @@
                             </select>
                         </div>
 
-                        <div class="sidebar-group">
+                        <div class="sidebar-group" id="distribution-group" style="display: none;">
                             <span class="group-label">Distribution</span>
                             <div class="toggle-group">
                                 <input type="radio" name="aggregation-domain" id="domain-distance" value="distance" class="toggle-input" checked>
                                 <label for="domain-distance" class="toggle-btn active">Distance</label>
-                                <input type="radio" name="aggregation-domain" id="domain-time" value="time" class="toggle-input" disabled>
-                                <label for="domain-time" class="toggle-btn toggle-btn-disabled">Time</label>
+                                <input type="radio" name="aggregation-domain" id="domain-time" value="time" class="toggle-input">
+                                <label for="domain-time" class="toggle-btn">Time</label>
                             </div>
-                            <p class="helper-text">Time unlocks with a fictional overlay.</p>
                         </div>
 
                         <div class="sidebar-group" id="stl-settings-group">
