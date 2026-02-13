@@ -7,9 +7,11 @@ import { DEFAULT_STL_OPTIONS } from '../export/stl-options.js';
 class Route3DVisualization {
     constructor(containerId = 'route-3d-viewer') {
         this.containerId = containerId;
+        this.containerElement = null;
         this.ovViewer = null;
         this.isInitialized = false;
         this.currentRouteId = null;
+        this._loadInProgress = false;
     }
 
     // Initialize the OV embedded viewer
@@ -32,15 +34,8 @@ class Route3DVisualization {
             // Clean up any previous viewer
             this.cleanup();
 
-            // Clear container
-            containerElement.innerHTML = '';
-
-            // Create the OV embedded viewer (STL import is built-in, no external libs needed)
-            this.ovViewer = new OV.EmbeddedViewer(containerElement, {
-                backgroundColor: new OV.RGBAColor(255, 255, 255, 255),
-                defaultColor: new OV.RGBColor(200, 200, 200),
-                edgeSettings: new OV.EdgeSettings(false, new OV.RGBColor(0, 0, 0), 1),
-            });
+            this.containerElement = containerElement;
+            this._createViewer();
 
             this.isInitialized = true;
             console.log('🎮 OV 3D viewer fully initialized!');
@@ -51,9 +46,57 @@ class Route3DVisualization {
         }
     }
 
+    // Create (or recreate) the OV embedded viewer inside the stored container
+    _createViewer() {
+        // Destroy previous viewer if any
+        if (this.ovViewer) {
+            try {
+                this.ovViewer.Destroy();
+            } catch (e) {
+                // ignore
+            }
+            this.ovViewer = null;
+        }
+
+        // Remove only canvas elements — leave any progressDiv in the DOM so that
+        // stale onModelFinished callbacks from a destroyed viewer can still call
+        // parentElement.removeChild(progressDiv) without a NotFoundError.
+        for (const canvas of [...this.containerElement.querySelectorAll('canvas')]) {
+            canvas.remove();
+        }
+
+        this._loadInProgress = false;
+
+        // Create the OV embedded viewer (STL import is built-in, no external libs needed)
+        this.ovViewer = new OV.EmbeddedViewer(this.containerElement, {
+            backgroundColor: new OV.RGBAColor(255, 255, 255, 255),
+            defaultColor: new OV.RGBColor(200, 200, 200),
+            edgeSettings: new OV.EdgeSettings(false, new OV.RGBColor(0, 0, 0), 1),
+            onModelLoaded: () => {
+                this._loadInProgress = false;
+                console.log('🪙 Coin loaded in viewer');
+            },
+            onModelLoadFailed: () => {
+                this._loadInProgress = false;
+                console.warn('⚠️ Coin load failed');
+            },
+        });
+    }
+
+    // Ensure the viewer is in a clean state ready for a new LoadModel call.
+    // OV's ThreeModelLoader silently drops LoadModel calls while inProgress,
+    // which corrupts the progressDiv state. We only recreate (expensive — new
+    // WebGL context) when a load is actually in flight. Otherwise the existing
+    // viewer can be reused since LoadModelFromInputFiles clears the scene itself.
+    _ensureReadyForLoad() {
+        if (this._loadInProgress) {
+            this._createViewer();
+        }
+    }
+
     // Add a route by generating its STL and loading into OV
     async addRoute(routeData) {
-        if (!this.isInitialized || !this.ovViewer) {
+        if (!this.isInitialized || !this.containerElement) {
             console.warn('3D viewer not initialized');
             return false;
         }
@@ -69,16 +112,19 @@ class Route3DVisualization {
             // Generate STL blob using the existing export pipeline
             const stlBlob = await exportToSTL(routeData, DEFAULT_STL_OPTIONS);
 
+            // Recreate viewer only if a previous load is still in flight
+            this._ensureReadyForLoad();
+
             // Wrap blob in a File object for OV
             const file = new File([stlBlob], 'coin.stl', { type: 'application/octet-stream' });
             const dt = new DataTransfer();
             dt.items.add(file);
 
-            // Load model into OV (clears previous and loads new)
+            // Load model into OV (clears previous model internally)
+            this._loadInProgress = true;
             this.ovViewer.LoadModelFromFileList(dt.files);
 
             this.currentRouteId = routeData.id;
-            console.log('🪙 Coin STL loaded into viewer');
             return true;
         } catch (error) {
             console.error('❌ Failed to load coin into viewer:', error);
@@ -88,18 +134,21 @@ class Route3DVisualization {
 
     // Clear all routes from the viewer
     clearAllRoutes() {
-        if (!this.isInitialized || !this.ovViewer) {
+        if (!this.isInitialized || !this.containerElement) {
             console.log('⚠️ 3D viewer not initialized, skipping clearAllRoutes');
             return;
         }
 
-        try {
-            const viewer = this.ovViewer.GetViewer();
-            if (viewer) {
-                viewer.Clear();
+        if (this._loadInProgress) {
+            // Must recreate to safely abort the in-flight load
+            this._createViewer();
+        } else {
+            // Safe to clear the scene directly
+            try {
+                this.ovViewer.GetViewer().Clear();
+            } catch (error) {
+                console.warn('⚠️ Could not clear viewer:', error);
             }
-        } catch (error) {
-            console.warn('⚠️ Could not clear viewer:', error);
         }
 
         this.currentRouteId = null;
@@ -136,8 +185,10 @@ class Route3DVisualization {
             this.ovViewer = null;
         }
 
+        this.containerElement = null;
         this.isInitialized = false;
         this.currentRouteId = null;
+        this._loadInProgress = false;
     }
 
     // Camera controls
