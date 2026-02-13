@@ -723,11 +723,6 @@ body.sidebar-open {
         align-items: flex-start;
     }
 
-    .viewer-toggle-buttons {
-        width: 100%;
-        justify-content: flex-start;
-    }
-
     .tab-buttons {
         overflow-x: auto;
         gap: 0.5rem;
@@ -874,15 +869,6 @@ body.sidebar-open {
         font-size: 0.78rem;
     }
 
-    .viewer-toggle-buttons {
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-
-    .viewer-toggle-btn {
-        width: 100%;
-        text-align: center;
-    }
 
     .tab-buttons {
         padding: 0.4rem 0.35rem;
@@ -999,6 +985,7 @@ body.sidebar-open {
     cursor: pointer;
     font-size: 0.8rem;
     font-weight: 500;
+    line-height: 1;
     color: var(--text-secondary);
     transition: all 0.2s ease;
     text-align: center;
@@ -1133,10 +1120,6 @@ body.sidebar-open {
         align-items: flex-start;
     }
 
-    .viewer-toggle-buttons {
-        width: 100%;
-        justify-content: flex-start;
-    }
 }
 
 /* 3D Visualization */
@@ -1419,42 +1402,6 @@ body.sidebar-open {
     padding: 0.5rem 0.75rem;
     font-size: 0.75rem;
     color: var(--text-secondary);
-}
-
-/* View Toggle Buttons */
-.viewer-toggle-buttons {
-    display: flex;
-    gap: 0.75rem;
-    justify-content: flex-start;
-}
-
-.viewer-toggle-btn {
-    background: white;
-    border: 2px solid var(--border);
-    border-radius: var(--border-radius);
-    padding: 0.5rem 1rem;
-    cursor: pointer;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-    transition: all 0.2s ease;
-}
-
-.viewer-toggle-btn.active {
-    background: var(--primary-color);
-    border-color: var(--primary-color);
-    color: white;
-}
-
-.viewer-toggle-btn:hover {
-    border-color: var(--primary-color);
-    color: var(--primary-color);
-}
-
-.viewer-toggle-btn.active:hover {
-    background: var(--primary-hover);
-    border-color: var(--primary-hover);
-    color: white;
 }
 
 /* Routes & Coins Tabs */

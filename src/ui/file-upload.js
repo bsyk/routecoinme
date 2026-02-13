@@ -1046,41 +1046,23 @@ class FileUploadHandler {
     updateDomainControlState() {
         const overlayValue = this.aggregationOptions.overlay;
         const isFictional = overlayValue && overlayValue !== 'real';
-        const timeRadio = document.getElementById('domain-time');
+        const distributionGroup = document.getElementById('distribution-group');
         const distanceRadio = document.getElementById('domain-distance');
-        const timeLabel = timeRadio ? document.querySelector(`label[for="domain-time"]`) : null;
-        const controlsLocked = Boolean(this.activeCoin);
 
-        if (timeRadio) {
-            const shouldDisableTime = controlsLocked || !isFictional;
-            timeRadio.disabled = shouldDisableTime;
-            if (!isFictional) {
-                timeRadio.checked = false;
-            }
-
-            if (timeLabel) {
-                const tooltip = controlsLocked
-                    ? 'Viewing a saved coin. Switch back to Routes to change distribution.'
-                    : 'Select a fictional overlay to unlock time distribution.';
-                if (shouldDisableTime) {
-                    timeLabel.setAttribute('title', tooltip);
-                } else {
-                    timeLabel.removeAttribute('title');
-                }
-                timeLabel.classList.toggle('toggle-btn-disabled', shouldDisableTime);
-            }
+        // Show the entire distribution group only for fictional overlays
+        if (distributionGroup) {
+            distributionGroup.style.display = isFictional ? '' : 'none';
         }
 
+        // Reset to distance when switching away from fictional
         if (!isFictional) {
             this.aggregationOptions.domain = 'distance';
             if (distanceRadio) {
                 distanceRadio.checked = true;
             }
+            const domainRadios = document.querySelectorAll('input[name="aggregation-domain"]');
+            this.syncToggleActive(domainRadios);
         }
-
-        // Sync active classes
-        const domainRadios = document.querySelectorAll('input[name="aggregation-domain"]');
-        this.syncToggleActive(domainRadios);
     }
 
     updateSidebarControlsState() {
@@ -1110,38 +1092,19 @@ class FileUploadHandler {
             }
         });
 
-        const domainRadios = document.querySelectorAll('input[name="aggregation-domain"]');
-        const overlayIsFictional = this.aggregationOptions.overlay && this.aggregationOptions.overlay !== 'real';
-        domainRadios.forEach(radio => {
-            if (radio.value === 'time') {
-                radio.disabled = controlsLocked || !overlayIsFictional;
-            } else {
-                radio.disabled = controlsLocked;
-            }
-
-            const label = document.querySelector(`label[for="${radio.id}"]`);
-            if (label) {
-                const disabled = radio.disabled;
-                label.classList.toggle('toggle-btn-disabled', disabled);
-
-                if (disabled) {
-                    let tooltip;
-                    if (controlsLocked) {
-                        tooltip = 'Viewing a saved coin. Switch back to Routes to change distribution.';
-                    } else if (radio.value === 'time' && !overlayIsFictional) {
-                        tooltip = 'Select a fictional overlay to unlock time distribution.';
-                    }
-
-                    if (tooltip) {
-                        label.setAttribute('title', tooltip);
-                    } else {
-                        label.removeAttribute('title');
-                    }
-                } else {
-                    label.removeAttribute('title');
+        // Distribution group visibility is handled by updateDomainControlState;
+        // just disable toggles when viewing a saved coin
+        if (controlsLocked) {
+            const domainRadios = document.querySelectorAll('input[name="aggregation-domain"]');
+            domainRadios.forEach(radio => {
+                radio.disabled = true;
+                const label = document.querySelector(`label[for="${radio.id}"]`);
+                if (label) {
+                    label.classList.add('toggle-btn-disabled');
+                    label.setAttribute('title', 'Viewing a saved coin. Switch back to Routes to change distribution.');
                 }
-            }
-        });
+            });
+        }
 
         requestAnimationFrame(() => this.alignSidebarWithViewer());
     }
