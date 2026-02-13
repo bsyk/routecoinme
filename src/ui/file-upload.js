@@ -278,29 +278,13 @@ class FileUploadHandler {
 
     // UNIFIED HANDLER: Handle any change to what routes are selected/visible
     handleSelectedRoutesChanged(data) {
-        console.log('🔄 Selected routes changed - redrawing all visualizations');
+        console.log('🔄 Selected routes changed - redrawing visualizations');
 
         // Ensure we're showing the routes UI
         this.showRoutesUI();
 
-        // Clear ALL routes from visualizations first
-        this.clearAllVisualizationsRoutes();
-
-        // Add routes that should be visible
-        if (this.isShowingAggregated && this.aggregatedRoute) {
-            // Show only aggregated route
-            console.log('➕ Adding aggregated route to visualizations');
-            this.addRouteToAllVisualizations(this.aggregatedRoute);
-        } else {
-            // Show selected individual routes
-            console.log(`➕ Adding ${this.selectedRoutes.size} selected routes to visualizations`);
-            this.uploadedRoutes.forEach(route => {
-                if (this.selectedRoutes.has(route.id)) {
-                    console.log(`  - Adding route: ${route.filename} (${route.id})`);
-                    this.addRouteToAllVisualizations(route);
-                }
-            });
-        }
+        // Rebuild the map with only original uploaded routes (never aggregated/coin routes)
+        this.refreshMapWithSelectedRoutes();
 
         // Update UI elements
         this.updateRouteList();
@@ -319,37 +303,22 @@ class FileUploadHandler {
 
     // Helper: Clear all routes from all visualizations
     clearAllVisualizationsRoutes() {
-        // Clear map
-        if (this.mapViz?.map) {
-            this.uploadedRoutes.forEach(route => {
-                this.mapViz.removeRoute(route.id);
-            });
-            if (this.aggregatedRoute) {
-                this.mapViz.removeRoute(this.aggregatedRoute.id);
-            }
-        }
-        
         // Clear 3D viewer
         if (this.is3DInitialized && this.viewer3D) {
-            this.uploadedRoutes.forEach(route => {
-                this.viewer3D.removeRoute(route.id);
-            });
-            if (this.aggregatedRoute) {
-                this.viewer3D.removeRoute(this.aggregatedRoute.id);
-            }
+            this.viewer3D.clearAllRoutes();
         }
     }
 
-    // Helper: Add route to all visualizations
-    addRouteToAllVisualizations(route) {
-        // Add to map
-        if (this.mapViz?.map) {
-            this.mapViz.addRoute(route);
-        }
+    // Rebuild the map to show only selected original uploaded routes
+    refreshMapWithSelectedRoutes() {
+        if (!this.mapViz?.map) return;
 
-        // 3D coin viewer is refreshed separately via refresh3DViewer() after
-        // aggregation — it always displays a single aggregated coin STL, so
-        // individual route additions are not applicable.
+        this.mapViz.clearAllRoutes();
+        this.uploadedRoutes.forEach(route => {
+            if (this.selectedRoutes.has(route.id)) {
+                this.mapViz.addRoute(route);
+            }
+        });
     }
 
     // Legacy method - now delegated to event system
@@ -443,33 +412,8 @@ class FileUploadHandler {
             return;
         }
 
-        if (this.isShowingAggregated && this.aggregatedRoute) {
-            // Show aggregated route
-            console.log('🔗 Adding aggregated route to map');
-            this.mapViz.addRoute(this.aggregatedRoute);
-        } else if (this.uploadedRoutes.length > 0) {
-            // Show selected individual routes
-            let addedRoutes = 0;
-            this.uploadedRoutes.forEach(route => {
-                if (this.selectedRoutes.has(route.id)) {
-                    console.log(`🗺️ Adding selected route to map: ${route.filename}`);
-                    this.mapViz.addRoute(route);
-                    addedRoutes++;
-                }
-            });
-
-            // If no routes are selected but we have routes, auto-select all routes (for initial load)
-            if (this.selectedRoutes.size === 0 && this.uploadedRoutes.length > 0) {
-                console.log('🎯 Auto-selecting all routes for initial map display');
-                this.uploadedRoutes.forEach(route => {
-                    this.selectedRoutes.add(route.id);
-                    this.mapViz.addRoute(route);
-                    addedRoutes++;
-                });
-            }
-            
-            console.log(`✅ Added ${addedRoutes} routes to map visualization`);
-        }
+        // Map only shows original uploaded routes
+        this.refreshMapWithSelectedRoutes();
     }
 
     // Initialize storage manager
@@ -1867,12 +1811,8 @@ class FileUploadHandler {
 
             console.log(`✅ Aggregated route refreshed (${reason}) -> ${aggregatedRoute.filename}`);
 
-            if (this.isShowingAggregated) {
-                this.clearAllVisualizationsRoutes();
-                this.addRouteToAllVisualizations(aggregatedRoute);
-                if (this.currentViewMode === '3d' && this.is3DInitialized) {
-                    this.refresh3DViewer();
-                }
+            if (this.isShowingAggregated && this.currentViewMode === '3d' && this.is3DInitialized) {
+                this.refresh3DViewer();
             }
 
             this.updateStatsDisplay();
@@ -2465,28 +2405,16 @@ class FileUploadHandler {
 
         // Initialize the map
         if (this.mapViz.initializeMap(mapElement)) {
-            // Add only selected routes to the map (or all if none are specifically selected)
-            if (this.isShowingAggregated && this.aggregatedRoute) {
-                // Show aggregated route
-                this.mapViz.addRoute(this.aggregatedRoute);
-            } else {
-                // Show selected individual routes
+            // Auto-select all routes if none are selected (for initial load)
+            if (this.selectedRoutes.size === 0 && this.uploadedRoutes.length > 0) {
+                console.log('🎯 Auto-selecting all routes for initial map display');
                 this.uploadedRoutes.forEach(route => {
-                    if (this.selectedRoutes.has(route.id)) {
-                        this.mapViz.addRoute(route);
-                    }
+                    this.selectedRoutes.add(route.id);
                 });
-
-                // If no routes are selected but we have routes, auto-select all routes (for initial load)
-                if (this.selectedRoutes.size === 0 && this.uploadedRoutes.length > 0) {
-                    console.log('🎯 Auto-selecting all routes for initial map display');
-                    this.uploadedRoutes.forEach(route => {
-                        this.selectedRoutes.add(route.id);
-                        this.mapViz.addRoute(route);
-                    });
-                }
             }
-            
+
+            // Map only shows original uploaded routes, never aggregated/coin routes
+            this.refreshMapWithSelectedRoutes();
             console.log('🗺️ Map visualization initialized with selected routes');
         }
     }
