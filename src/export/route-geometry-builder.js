@@ -126,7 +126,10 @@ export function scaleAndCenter(points, options) {
   }
 
   // Convert meters to millimeters and scale to fit
-  const scale = availableSize / (routeMaxDimension * 1000);
+  // Guard against zero-dimension routes (all points at same location)
+  const scale = routeMaxDimension > 0
+    ? availableSize / (routeMaxDimension * 1000)
+    : 1;
 
   // Calculate center offsets (in meters)
   const centerX = (bounds.minX + bounds.maxX) / 2;
@@ -233,6 +236,14 @@ function generateWallGeometry(points, options) {
   const positions = [];
   const indices = [];
 
+  // Helper: compute normalised perpendicular from a direction vector.
+  // Returns [perpX, perpY] or null if the segment has zero XY length.
+  function perp(dx, dy) {
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) return null;
+    return [-dy / len, dx / len];
+  }
+
   // Create a continuous ribbon/wall
   // For each point, create 4 vertices: left-bottom, right-bottom, left-top, right-top
   for (let i = 0; i < points.length; i++) {
@@ -242,42 +253,29 @@ function generateWallGeometry(points, options) {
     let perpX, perpY;
 
     if (i === 0) {
-      // First point: use direction to next point
-      const dx = points[i + 1].x - p.x;
-      const dy = points[i + 1].y - p.y;
-      const length = Math.sqrt(dx * dx + dy * dy);
-      perpX = -dy / length;
-      perpY = dx / length;
+      const pr = perp(points[i + 1].x - p.x, points[i + 1].y - p.y);
+      [perpX, perpY] = pr || [1, 0];
     } else if (i === points.length - 1) {
-      // Last point: use direction from previous point
-      const dx = p.x - points[i - 1].x;
-      const dy = p.y - points[i - 1].y;
-      const length = Math.sqrt(dx * dx + dy * dy);
-      perpX = -dy / length;
-      perpY = dx / length;
+      const pr = perp(p.x - points[i - 1].x, p.y - points[i - 1].y);
+      [perpX, perpY] = pr || [1, 0];
     } else {
-      // Middle point: average of directions to/from adjacent points
-      const dx1 = p.x - points[i - 1].x;
-      const dy1 = p.y - points[i - 1].y;
-      const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+      const p1 = perp(p.x - points[i - 1].x, p.y - points[i - 1].y);
+      const p2 = perp(points[i + 1].x - p.x, points[i + 1].y - p.y);
 
-      const dx2 = points[i + 1].x - p.x;
-      const dy2 = points[i + 1].y - p.y;
-      const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-
-      // Average perpendicular direction
-      const perp1X = -dy1 / len1;
-      const perp1Y = dx1 / len1;
-      const perp2X = -dy2 / len2;
-      const perp2Y = dx2 / len2;
-
-      perpX = (perp1X + perp2X) / 2;
-      perpY = (perp1Y + perp2Y) / 2;
-
-      // Normalize
-      const perpLen = Math.sqrt(perpX * perpX + perpY * perpY);
-      perpX /= perpLen;
-      perpY /= perpLen;
+      if (p1 && p2) {
+        perpX = (p1[0] + p2[0]) / 2;
+        perpY = (p1[1] + p2[1]) / 2;
+        const perpLen = Math.sqrt(perpX * perpX + perpY * perpY);
+        if (perpLen > 0) {
+          perpX /= perpLen;
+          perpY /= perpLen;
+        } else {
+          [perpX, perpY] = p1;
+        }
+      } else {
+        const fallback = p1 || p2 || [1, 0];
+        [perpX, perpY] = fallback;
+      }
     }
 
     // Create 4 vertices for this point
