@@ -946,28 +946,6 @@ body.sidebar-open {
     letter-spacing: 0.05em;
 }
 
-.radio-option {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.95rem;
-    color: var(--text-primary);
-}
-
-.radio-option input[type="radio"] {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-}
-
-.radio-option-disabled {
-    opacity: 0.5;
-}
-
-.radio-option-disabled input[type="radio"] {
-    cursor: not-allowed;
-}
-
 .toggle-input {
     display: none;
 }
@@ -2023,36 +2001,6 @@ body.sidebar-open {
     font-size: 0.75rem;
     color: var(--text-secondary);
     line-height: 1.4;
-}
-
-.modal-intro {
-    margin: 0 0 1.5rem 0;
-    padding: 1rem;
-    background: var(--surface);
-    border-left: 3px solid var(--primary-color);
-    border-radius: 4px;
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-    line-height: 1.5;
-}
-
-.form-section {
-    margin-bottom: 1.5rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid var(--border);
-}
-
-.form-section:last-child {
-    margin-bottom: 0;
-    padding-bottom: 0;
-    border-bottom: none;
-}
-
-.form-section-title {
-    margin: 0 0 1rem 0;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-primary);
 }
 
 .form-label-unit {
