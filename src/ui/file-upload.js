@@ -341,16 +341,16 @@ class FileUploadHandler {
     }
 
     // Helper: Add route to all visualizations
-    addRouteToAllVisualizations(route) {
+    async addRouteToAllVisualizations(route) {
         // Add to map
         if (this.mapViz?.map) {
             this.mapViz.addRoute(route);
         }
-        
+
         // Add to 3D viewer if it's active and initialized
         if (this.currentViewMode === '3d' && this.is3DInitialized && this.viewer3D?.isInitialized) {
             try {
-                this.viewer3D.addRoute(route);
+                await this.viewer3D.addRoute(route);
             } catch (error) {
                 console.error(`❌ Failed to add route to 3D viewer:`, error);
             }
@@ -875,7 +875,7 @@ class FileUploadHandler {
                 if (viewerContainer) {
                     const rect = viewerContainer.getBoundingClientRect();
                     if (rect.width > 0 && rect.height > 0) {
-                        this.viewer3D.resize(rect.width, rect.height);
+                        this.viewer3D.resize();
                     }
                 }
             }
@@ -972,7 +972,7 @@ class FileUploadHandler {
             }
 
             if (target === viewer3DContainer && this.viewer3D?.isInitialized) {
-                this.viewer3D.resize(updatedRect.width, updatedRect.height);
+                this.viewer3D.resize();
             }
         });
     }
@@ -2595,10 +2595,10 @@ class FileUploadHandler {
     }
 
     // Initialize 3D visualization
-    initialize3DVisualization() {
+    async initialize3DVisualization() {
         console.log('🎮 Initializing 3D visualization...');
         const viewer3DElement = document.getElementById('route-3d-viewer');
-        
+
         if (!viewer3DElement) {
             console.error('❌ 3D viewer element not found!');
             return;
@@ -2610,33 +2610,33 @@ class FileUploadHandler {
         // Initialize the 3D viewer
         const initResult = this.viewer3D.initialize(viewer3DElement);
         console.log('🔧 3D viewer initialization result:', initResult);
-        
+
         if (initResult) {
             // Add selected routes to the 3D viewer
             console.log(`🔄 Attempting to add selected routes to 3D viewer...`);
-            
+
             if (this.isShowingAggregated && this.aggregatedRoute) {
                 // Show aggregated route
                 console.log(`➕ Adding aggregated route to 3D viewer:`, this.aggregatedRoute.filename);
-                this.viewer3D.addRoute(this.aggregatedRoute);
+                await this.viewer3D.addRoute(this.aggregatedRoute);
             } else {
                 // Show selected individual routes
-                this.uploadedRoutes.forEach((route, index) => {
+                for (const route of this.uploadedRoutes) {
                     if (this.selectedRoutes.has(route.id)) {
-                        console.log(`➕ Adding selected route ${index + 1} to 3D viewer:`, route.filename);
-                        
+                        console.log(`➕ Adding selected route to 3D viewer:`, route.filename);
+
                         if (!route.points || route.points.length === 0) {
                             console.warn(`⚠️ Route ${route.filename} has no points data!`);
-                            return;
+                            continue;
                         }
-                        
-                        this.viewer3D.addRoute(route);
+
+                        await this.viewer3D.addRoute(route);
                     }
-                });
+                }
             }
-            
+
             console.log('🎮 3D visualization initialized with selected routes');
-            
+
             // Setup resize handler
             this.setup3DResizeHandler();
         } else {
@@ -2646,11 +2646,8 @@ class FileUploadHandler {
 
     // Setup resize handler for 3D viewer
     setup3DResizeHandler() {
-        const resizeObserver = new ResizeObserver(entries => {
-            for (let entry of entries) {
-                const { width, height } = entry.contentRect;
-                this.viewer3D.resize(width, height);
-            }
+        const resizeObserver = new ResizeObserver(() => {
+            this.viewer3D.resize();
         });
 
         const viewer3DContainer = document.getElementById('viewer-3d-container');
@@ -2660,7 +2657,7 @@ class FileUploadHandler {
     }
 
     // Refresh 3D viewer with current routes (for when new routes are uploaded)
-    refresh3DViewer() {
+    async refresh3DViewer() {
         if (!this.viewer3D?.isInitialized) {
             console.warn('⚠️ Cannot refresh 3D viewer - not initialized');
             return;
@@ -2668,30 +2665,30 @@ class FileUploadHandler {
 
         try {
             console.log('🔄 Refreshing 3D viewer with current routes...');
-            
+
             // Clear all existing routes using the proper method
             this.viewer3D.clearAllRoutes();
-            
+
             // Add back the routes that should be displayed
             if (this.isShowingAggregated && this.aggregatedRoute) {
                 console.log(`➕ Adding aggregated route to 3D viewer: ${this.aggregatedRoute.filename}`);
-                this.viewer3D.addRoute(this.aggregatedRoute);
+                await this.viewer3D.addRoute(this.aggregatedRoute);
             } else {
                 // Add back only selected routes
-                this.uploadedRoutes.forEach(route => {
+                for (const route of this.uploadedRoutes) {
                     if (this.selectedRoutes.has(route.id)) {
                         console.log(`➕ Adding selected route to 3D viewer: ${route.filename}`);
-                        this.viewer3D.addRoute(route);
+                        await this.viewer3D.addRoute(route);
                     }
-                });
+                }
             }
-            
+
             // After adding routes, make sure camera is positioned to show all routes
             if (this.viewer3D.fitToView) {
                 console.log('📷 Repositioning camera to fit all routes...');
                 this.viewer3D.fitToView();
             }
-            
+
             console.log('✅ 3D viewer refreshed successfully');
         } catch (error) {
             console.error('❌ Failed to refresh 3D viewer:', error);
@@ -2699,7 +2696,7 @@ class FileUploadHandler {
     }
 
     // Add a route to 3D viewer if it's initialized (for newly uploaded routes)
-    addRouteTo3DViewerIfInitialized(route) {
+    async addRouteTo3DViewerIfInitialized(route) {
         // Only proceed if we're in 3D view mode and viewer is initialized
         if (this.currentViewMode !== '3d' || !this.is3DInitialized || !this.viewer3D?.isInitialized) {
             console.log(`📝 3D viewer not active/initialized, route will be added when 3D view is accessed: ${route.filename}`);
@@ -2709,16 +2706,16 @@ class FileUploadHandler {
         // Only add if route is selected for display and we're not showing aggregated route
         if (!this.isShowingAggregated && this.selectedRoutes.has(route.id)) {
             console.log(`➕ Adding new selected route to initialized 3D viewer: ${route.filename}`);
-            
+
             try {
-                this.viewer3D.addRoute(route);
-                
+                await this.viewer3D.addRoute(route);
+
                 // Ensure camera is positioned to show the new route
                 if (this.viewer3D.fitToView) {
                     console.log('📷 Repositioning camera to show newly added route...');
                     this.viewer3D.fitToView();
                 }
-                
+
                 console.log(`✅ Successfully added route to 3D viewer: ${route.filename}`);
             } catch (error) {
                 console.error(`❌ Failed to add route to 3D viewer: ${route.filename}`, error);
@@ -3504,9 +3501,8 @@ class FileUploadHandler {
                 
                 if (this.viewer3D?.isInitialized) {
                     // Resize viewer first
-                    const rect = viewer3DContainer.getBoundingClientRect();
-                    this.viewer3D.resize(rect.width, rect.height);
-                    
+                    this.viewer3D.resize();
+
                     // Refresh with current routes (this handles routes added while in map view)
                     this.refresh3DViewer();
                 }
@@ -3554,10 +3550,8 @@ class FileUploadHandler {
         }
     }
 
-    toggleFilledArea(show) {
-        if (this.viewer3D) {
-            this.viewer3D.toggleFilledArea(show);
-        }
+    toggleFilledArea() {
+        // No-op: filled areas not applicable with OV coin viewer
     }
 
     // 3D Camera Controls
