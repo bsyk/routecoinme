@@ -221,8 +221,11 @@ class RouteCoinMe {
             console.log('📅 Fetching 2025 activities for Year Coin...');
 
             // Call the worker endpoint
-            const response = await fetch('/api/strava/year-coin?year=2025', {
-                credentials: 'include'
+            const response = await fetch('/api/strava/year-coin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ year: 2025 })
             });
 
             if (!response.ok) {

@@ -20,6 +20,69 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'Content-Type, X-Strava-Token',
 };
 
+// --- Fan-out / abuse limits ---
+// Bounds on cost-amplifying endpoints that fan out into many Strava API calls.
+const MAX_DATE_RANGE_DAYS = 366;
+const MAX_IMPORT_ACTIVITIES = 500;
+const MAX_EXISTING_IDS = 5000;
+
+// Strava sport types surfaced in the bulk-import UI (src/auth/strava-auth.js)
+const VALID_ACTIVITY_TYPES = new Set([
+    'Ride',
+    'VirtualRide',
+    'EBikeRide',
+    'GravelRide',
+    'MountainBikeRide',
+    'EMountainBikeRide',
+    'Run',
+    'TrailRun',
+    'VirtualRun',
+    'Hike',
+    'Walk',
+    'BackcountrySki',
+    'NordicSki',
+    'Snowshoe',
+    'Handcycle',
+    'Wheelchair',
+    'Velomobile',
+]);
+
+const DEFAULT_CYCLING_ACTIVITY_TYPES = [
+    'Ride',
+    'VirtualRide',
+    'EBikeRide',
+    'GravelRide',
+    'MountainBikeRide',
+    'EMountainBikeRide',
+];
+
+// Validate a 4-digit year string is plausible (2000..currentYear+1)
+export function isValidYear(y) {
+    if (typeof y !== 'string' || !/^\d{4}$/.test(y)) {
+        return false;
+    }
+    const year = parseInt(y, 10);
+    const currentYear = new Date().getFullYear();
+    return year >= 2000 && year <= currentYear + 1;
+}
+
+// Check that a [startMs, endMs) window is within the max allowed date range
+export function isDateRangeWithinLimit(startMs, endMs) {
+    if (typeof startMs !== 'number' || typeof endMs !== 'number' || isNaN(startMs) || isNaN(endMs)) {
+        return false;
+    }
+    const rangeMs = endMs - startMs;
+    return rangeMs <= MAX_DATE_RANGE_DAYS * 24 * 60 * 60 * 1000;
+}
+
+// Filter an array of activity type strings down to the known Strava sport types
+export function sanitizeActivityTypes(arr) {
+    if (!Array.isArray(arr)) {
+        return [];
+    }
+    return arr.filter(t => VALID_ACTIVITY_TYPES.has(t));
+}
+
 export default {
     async fetch(request, env, ctx) {
 
@@ -68,8 +131,8 @@ export default {
                 if (url.pathname === '/api/strava/bulk-import' && request.method === 'POST') {
                     return await bulkImportActivities(request, checkToken.authToken);
                 }
-                if (url.pathname === '/api/strava/year-coin') {
-                    return await createYearCoin(checkToken.authToken, url.searchParams);
+                if (url.pathname === '/api/strava/year-coin' && request.method === 'POST') {
+                    return await createYearCoin(request, checkToken.authToken);
                 }
 
                 // Segment endpoints - check import-segment before segments/:id to avoid route collision
@@ -494,7 +557,7 @@ async function bulkImportActivities(request, authToken) {
 
     try {
         const body = await request.json();
-        const { startDate, endDate, activityTypes, existingIds = [] } = body;
+        const { startDate, endDate, activityTypes, existingIds: rawExistingIds = [] } = body;
 
         if (!startDate || !endDate) {
             return new Response(JSON.stringify({
@@ -509,13 +572,47 @@ async function bulkImportActivities(request, authToken) {
             });
         }
 
+        const startMs = new Date(startDate).getTime();
+        const endMs = new Date(endDate).getTime();
+        if (isNaN(startMs) || isNaN(endMs)) {
+            return new Response(JSON.stringify({
+                error: 'Invalid parameters',
+                message: 'startDate and endDate must be valid dates'
+            }), {
+                status: 400,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            });
+        }
+
+        if (!isDateRangeWithinLimit(startMs, endMs)) {
+            return new Response(JSON.stringify({
+                error: 'Invalid parameters',
+                message: `date range too large (max ${MAX_DATE_RANGE_DAYS} days)`
+            }), {
+                status: 400,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            });
+        }
+
         // Convert dates to Unix timestamps (Strava expects seconds)
-        const afterTimestamp = Math.floor(new Date(startDate).getTime() / 1000);
-        const beforeTimestamp = Math.floor(new Date(endDate).getTime() / 1000);
+        const afterTimestamp = Math.floor(startMs / 1000);
+        const beforeTimestamp = Math.floor(endMs / 1000);
+
+        // Coerce and bound the existing-IDs list
+        const existingIds = (Array.isArray(rawExistingIds) ? rawExistingIds : []).slice(0, MAX_EXISTING_IDS);
+
+        // Only allow known Strava sport types through
+        const filteredActivityTypes = activityTypes ? sanitizeActivityTypes(activityTypes) : activityTypes;
 
         console.log(`📅 Fetching activities from ${startDate} to ${endDate}`);
-        if (activityTypes && activityTypes.length > 0) {
-            console.log(`🎯 Filtering by types: ${activityTypes.join(', ')}`);
+        if (filteredActivityTypes && filteredActivityTypes.length > 0) {
+            console.log(`🎯 Filtering by types: ${filteredActivityTypes.join(', ')}`);
         }
         if (existingIds.length > 0) {
             console.log(`⏭️  Skipping ${existingIds.length} already-imported activities`);
@@ -524,7 +621,7 @@ async function bulkImportActivities(request, authToken) {
         // Convert existing IDs to a Set for O(1) lookup (remove 'strava_' prefix)
         const existingStravaIds = new Set(
             existingIds
-                .filter(id => id.startsWith('strava_'))
+                .filter(id => typeof id === 'string' && id.startsWith('strava_'))
                 .map(id => id.replace('strava_', ''))
         );
 
@@ -533,9 +630,11 @@ async function bulkImportActivities(request, authToken) {
         const errors = [];
         const skipped = [];
         const streamPromises = [];
-        
+
         let page = 1;
         const perPage = 20; // Max of 200 allowed by Strava, limited to reduce memory usage
+        let queuedCount = 0;
+        let truncated = false;
 
         while (true) {
             const stravaUrl = new URL('https://www.strava.com/api/v3/athlete/activities');
@@ -576,6 +675,11 @@ async function bulkImportActivities(request, authToken) {
 
             // Filter and kick off parallel stream fetches for this page
             for (const activity of pageActivities) {
+                if (queuedCount >= MAX_IMPORT_ACTIVITIES) {
+                    truncated = true;
+                    break;
+                }
+
                 // Skip if already imported
                 if (existingStravaIds.has(activity.id.toString())) {
                     skipped.push({
@@ -587,9 +691,11 @@ async function bulkImportActivities(request, authToken) {
                 }
 
                 // Filter by activity sport_type if specified
-                if (activityTypes && activityTypes.length > 0 && !activityTypes.includes(activity.sport_type)) {
+                if (filteredActivityTypes && filteredActivityTypes.length > 0 && !filteredActivityTypes.includes(activity.sport_type)) {
                     continue;
                 }
+
+                queuedCount++;
 
                 // Kick off parallel stream fetch
                 const streamPromise = fetchActivityStreams(activity, authToken)
@@ -611,7 +717,12 @@ async function bulkImportActivities(request, authToken) {
 
                 streamPromises.push(streamPromise);
             }
-            
+
+            if (truncated) {
+                console.warn(`⚠️ Bulk import truncated at ${MAX_IMPORT_ACTIVITIES} queued activities`);
+                break;
+            }
+
             if (pageActivities.length < perPage) {
                 break; // Last page
             }
@@ -630,11 +741,13 @@ async function bulkImportActivities(request, authToken) {
             routes: routes,
             errors: errors,
             skipped: skipped,
+            truncated: truncated,
             summary: {
                 total: routes.length + skipped.length + errors.length,
                 imported: routes.length,
                 skipped: skipped.length,
-                failed: errors.length
+                failed: errors.length,
+                truncated: truncated
             }
         }), {
             status: 200,
@@ -709,27 +822,46 @@ async function fetchActivityStreams(activity, authToken) {
 }
 
 // Create a Year Coin by aggregating all cycling activities for a given year
-async function createYearCoin(authToken, searchParams) {
+async function createYearCoin(request, authToken) {
     console.log('📅 Creating Year Coin');
 
     try {
-        const year = searchParams.get('year') || new Date().getFullYear().toString();
+        // Read year/types from the JSON body (POST). Fall back to safe
+        // defaults if the body is missing or unparseable.
+        let requestedYear;
+        let requestedTypes;
+        try {
+            const body = await request.json();
+            requestedYear = body?.year;
+            requestedTypes = body?.types;
+        } catch (e) {
+            requestedYear = undefined;
+            requestedTypes = undefined;
+        }
 
-        // Default cycling activity types (same as Bulk Import)
-        const defaultActivityTypes = [
-            'Ride',
-            'VirtualRide',
-            'EBikeRide',
-            'GravelRide',
-            'MountainBikeRide',
-            'EMountainBikeRide'
-        ];
+        const currentYearStr = new Date().getFullYear().toString();
+        const yearStr = requestedYear !== undefined && requestedYear !== null
+            ? String(requestedYear)
+            : currentYearStr;
 
-        // Parse activity types from query params (comma-separated) or use defaults
-        const typesParam = searchParams.get('types');
-        const activityTypes = typesParam
-            ? typesParam.split(',').map(t => t.trim()).filter(Boolean)
-            : defaultActivityTypes;
+        if (!isValidYear(yearStr)) {
+            return new Response(JSON.stringify({
+                error: 'Invalid parameters',
+                message: 'year must be a 4-digit year between 2000 and next year'
+            }), {
+                status: 400,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            });
+        }
+        const year = yearStr;
+
+        // Filter requested types down to known Strava sport types; fall back
+        // to the default cycling list if nothing valid was provided.
+        const sanitizedTypes = Array.isArray(requestedTypes) ? sanitizeActivityTypes(requestedTypes) : [];
+        const activityTypes = sanitizedTypes.length > 0 ? sanitizedTypes : DEFAULT_CYCLING_ACTIVITY_TYPES;
 
         // Calculate year boundaries
         const startDate = new Date(`${year}-01-01T00:00:00Z`);
@@ -778,6 +910,12 @@ async function createYearCoin(authToken, searchParams) {
             );
 
             allActivities.push(...filteredActivities);
+
+            if (allActivities.length >= MAX_IMPORT_ACTIVITIES) {
+                allActivities.length = MAX_IMPORT_ACTIVITIES;
+                console.warn(`⚠️ Year Coin capped at ${MAX_IMPORT_ACTIVITIES} activities`);
+                break;
+            }
 
             if (pageActivities.length < perPage) {
                 break;
