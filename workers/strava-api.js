@@ -13,12 +13,29 @@
 //   - Server-side token exchange (client secret never exposed)
 //   - Stateless processing (no user data stored on server)
 
-// CORS headers for browser compatibility
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Strava-Token',
-};
+// Origins allowed to make credentialed cross-origin requests to this Worker
+const ALLOWED_ORIGINS = new Set([
+    'https://routecoin.me',
+    'https://www.routecoin.me',
+    'http://localhost:3000', // Vite dev server
+]);
+
+// Build CORS headers for a given request. Access-Control-Allow-Origin is only
+// set (echoing the request's Origin) when that origin is on the allowlist -
+// it is never '*', since Allow-Credentials must pair with a specific origin.
+export function corsHeaders(request) {
+    const origin = request?.headers?.get('Origin');
+    const headers = {
+        'Vary': 'Origin',
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+    };
+    if (origin && ALLOWED_ORIGINS.has(origin)) {
+        headers['Access-Control-Allow-Origin'] = origin;
+    }
+    return headers;
+}
 
 // --- Fan-out / abuse limits ---
 // Bounds on cost-amplifying endpoints that fan out into many Strava API calls.
@@ -85,12 +102,13 @@ export function sanitizeActivityTypes(arr) {
 
 export default {
     async fetch(request, env, ctx) {
+        const cors = corsHeaders(request);
 
         // Handle CORS preflight requests
         if (request.method === 'OPTIONS') {
             return new Response(null, {
                 status: 200,
-                headers: corsHeaders,
+                headers: cors,
             });
         }
 
@@ -113,7 +131,7 @@ export default {
                     return await handleAuthLogout(request, env);
                 }
             }
-            
+
             // Strava API requests
             if (url.pathname.startsWith('/api/strava/')) {
                 const checkToken = checkStravaToken(request);
@@ -122,11 +140,11 @@ export default {
                 }
 
                 if (url.pathname === '/api/strava/activities') {
-                    return await getActivities(checkToken.authToken, url.searchParams);
+                    return await getActivities(checkToken.authToken, url.searchParams, request);
                 }
                 if (url.pathname.startsWith('/api/strava/import-activity/')) {
                     const importActivityId = url.pathname.split('/')[4];
-                    return await importActivityAsRoute(checkToken.authToken, importActivityId);
+                    return await importActivityAsRoute(checkToken.authToken, importActivityId, request);
                 }
                 if (url.pathname === '/api/strava/bulk-import' && request.method === 'POST') {
                     return await bulkImportActivities(request, checkToken.authToken);
@@ -138,22 +156,22 @@ export default {
                 // Segment endpoints - check import-segment before segments/:id to avoid route collision
                 if (url.pathname.startsWith('/api/strava/import-segment/')) {
                     const segmentId = url.pathname.split('/')[4];
-                    return await importSegmentAsRoute(checkToken.authToken, segmentId);
+                    return await importSegmentAsRoute(checkToken.authToken, segmentId, request);
                 }
                 if (url.pathname.match(/^\/api\/strava\/segments\/\d+$/)) {
                     const segmentId = url.pathname.split('/')[4];
-                    return await getSegment(checkToken.authToken, segmentId);
+                    return await getSegment(checkToken.authToken, segmentId, request);
                 }
                 if (url.pathname.match(/^\/api\/strava\/activities\/\d+$/)) {
                     const activityId = url.pathname.split('/')[4];
-                    return await getActivity(checkToken.authToken, activityId);
+                    return await getActivity(checkToken.authToken, activityId, request);
                 }
             }
 
             // 404 for unknown paths
             return new Response('Not Found', {
                 status: 404,
-                headers: corsHeaders,
+                headers: cors,
             });
 
         } catch (error) {
@@ -165,7 +183,7 @@ export default {
                 status: 500,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...corsHeaders,
+                    ...cors,
                 },
             });
         }
@@ -191,8 +209,10 @@ function buildSetCookie(name, value, opts = {}) {
     return parts.join('; ');
 }
 function getAuthToken(request) {
+    // Token is read from the HttpOnly cookie only - no header fallback, so a
+    // token can never be exfiltrated to or injected from JavaScript/XSS.
     const cookies = parseCookies(request);
-    return request.headers.get('X-Strava-Token') || cookies[COOKIE_NAME] || null;
+    return cookies[COOKIE_NAME] || null;
 }
 function isHttps(request) {
     const url = new URL(request.url);
@@ -211,7 +231,7 @@ async function handleAuthLogin(request, env) {
     console.log('🔐 Starting Strava OAuth login');
     const clientId = env.STRAVA_CLIENT_ID;
     if (!clientId) {
-        return jsonResponse({ error: 'Server misconfiguration', message: 'Missing STRAVA_CLIENT_ID' }, 500);
+        return jsonResponse({ error: 'Server misconfiguration', message: 'Missing STRAVA_CLIENT_ID' }, 500, request);
     }
     const url = new URL(request.url);
     const origin = `${url.protocol}//${url.host}`;
@@ -223,7 +243,7 @@ async function handleAuthLogin(request, env) {
     const stateCookie = buildSetCookie(OAUTH_STATE_COOKIE, state, { maxAge: 600, secure: cookieSecure });
     return new Response(null, {
         status: 302,
-        headers: { Location: authUrl, 'Set-Cookie': stateCookie, ...corsHeaders }
+        headers: { Location: authUrl, 'Set-Cookie': stateCookie, ...corsHeaders(request) }
     });
 }
 
@@ -232,17 +252,17 @@ async function handleAuthCallback(request, env) {
     const clientId = env.STRAVA_CLIENT_ID;
     const clientSecret = env.STRAVA_CLIENT_SECRET;
     if (!clientId || !clientSecret) {
-        return jsonResponse({ error: 'Server misconfiguration', message: 'Missing Strava credentials' }, 500);
+        return jsonResponse({ error: 'Server misconfiguration', message: 'Missing Strava credentials' }, 500, request);
     }
     const url = new URL(request.url);
     const code = url.searchParams.get('code');
     const error = url.searchParams.get('error');
     if (error) {
         console.warn('⚠️ OAuth denied by user');
-        return jsonResponse({ error: 'Access denied' }, 400);
+        return jsonResponse({ error: 'Access denied' }, 400, request);
     }
     if (!code) {
-        return jsonResponse({ error: 'Missing code' }, 400);
+        return jsonResponse({ error: 'Missing code' }, 400, request);
     }
 
     // Validate OAuth state to prevent login CSRF
@@ -251,7 +271,7 @@ async function handleAuthCallback(request, env) {
     const cookieState = cookies[OAUTH_STATE_COOKIE];
     if (!queryState || !cookieState || queryState !== cookieState) {
         console.warn('⚠️ OAuth state mismatch or missing');
-        return jsonResponse({ error: 'Invalid state' }, 400);
+        return jsonResponse({ error: 'Invalid state' }, 400, request);
     }
 
     // Exchange code for token
@@ -268,13 +288,13 @@ async function handleAuthCallback(request, env) {
     if (!tokenResp.ok) {
         const body = await tokenResp.text();
         console.error('❌ Token exchange failed', tokenResp.status, body);
-        return jsonResponse({ error: 'Token exchange failed', status: tokenResp.status }, 500);
+        return jsonResponse({ error: 'Token exchange failed', status: tokenResp.status }, 500, request);
     }
     const tokenData = await tokenResp.json();
     const accessToken = tokenData.access_token;
     
     if (!accessToken) {
-        return jsonResponse({ error: 'No access token returned' }, 500);
+        return jsonResponse({ error: 'No access token returned' }, 500, request);
     }
     const cookieSecure = isHttps(request);
     const accessCookie = buildSetCookie(COOKIE_NAME, encodeURIComponent(accessToken), { maxAge: 21600, secure: cookieSecure }); // 6h
@@ -285,7 +305,7 @@ async function handleAuthCallback(request, env) {
     // Use a Headers object so we can append multiple Set-Cookie headers
     const headers = new Headers({
         Location: `${origin}/auth/callback`,
-        ...corsHeaders
+        ...corsHeaders(request)
     });
     headers.append('Set-Cookie', accessCookie);
     headers.append('Set-Cookie', expiredStateCookie);
@@ -296,7 +316,7 @@ async function handleAuthCallback(request, env) {
 async function handleAuthStatus(request, env) {
     const token = getAuthToken(request);
     if (!token) {
-        return jsonResponse({ authenticated: false }, 401);
+        return jsonResponse({ authenticated: false }, 401, request);
     }
     try {
         // Verify token by fetching athlete
@@ -305,13 +325,13 @@ async function handleAuthStatus(request, env) {
         });
         if (!resp.ok) {
             console.warn('⚠️ Token invalid');
-            return jsonResponse({ authenticated: false }, 401);
+            return jsonResponse({ authenticated: false }, 401, request);
         }
         const athlete = await resp.json();
-        return jsonResponse({ authenticated: true, athlete }, 200);
+        return jsonResponse({ authenticated: true, athlete }, 200, request);
     } catch (e) {
         console.error('❌ Auth status check failed', e);
-        return jsonResponse({ authenticated: false }, 401);
+        return jsonResponse({ authenticated: false }, 401, request);
     }
 }
 
@@ -324,18 +344,18 @@ async function handleAuthLogout(request, env) {
         headers: {
             'Content-Type': 'application/json',
             'Set-Cookie': expiredAccess,
-            ...corsHeaders
+            ...corsHeaders(request)
         }
     });
 }
 
-function jsonResponse(obj, status) {
-    return new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+function jsonResponse(obj, status, request) {
+    return new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders(request) } });
 }
 
 // Handle Strava API requests
 function checkStravaToken(request) {
-    // Extract and validate auth token (now supports cookie fallback)
+    // Extract and validate auth token (cookie only - no header fallback)
     const authTokenRaw = getAuthToken(request);
     const authToken = authTokenRaw ? decodeURIComponent(authTokenRaw) : null;
 
@@ -347,7 +367,7 @@ function checkStravaToken(request) {
             status: 401,
             headers: {
                 'Content-Type': 'application/json',
-                ...corsHeaders,
+                ...corsHeaders(request),
             },
         });
     }
@@ -356,8 +376,9 @@ function checkStravaToken(request) {
 }
 
 // Get activities list
-async function getActivities(authToken, searchParams) {
+async function getActivities(authToken, searchParams, request) {
     console.log('📊 Fetching activities list');
+    const cors = corsHeaders(request);
 
     try {
         // Build Strava API URL with query parameters
@@ -394,7 +415,7 @@ async function getActivities(authToken, searchParams) {
                     status: response.status,
                     headers: {
                         'Content-Type': 'application/json',
-                        ...corsHeaders,
+                        ...cors,
                     },
                 }
             );
@@ -408,7 +429,7 @@ async function getActivities(authToken, searchParams) {
             headers: {
                 'Content-Type': 'application/json',
                 'Cache-Control': 'private, max-age=1800', // Cache in browser only for 30 minutes
-                ...corsHeaders,
+                ...cors,
             },
         });
 
@@ -423,7 +444,7 @@ async function getActivities(authToken, searchParams) {
                 status: 500,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...corsHeaders,
+                    ...cors,
                 },
             }
         );
@@ -431,8 +452,9 @@ async function getActivities(authToken, searchParams) {
 }
 
 // Import activity as route (fetch activity + streams, convert to route format)
-async function importActivityAsRoute(authToken, activityId) {
+async function importActivityAsRoute(authToken, activityId, request) {
     console.log(`📥 Importing activity ${activityId} as route`);
+    const cors = corsHeaders(request);
 
     try {
         // Fetch both activity details and streams in parallel
@@ -464,7 +486,7 @@ async function importActivityAsRoute(authToken, activityId) {
                 status: activityResponse.status,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...corsHeaders,
+                    ...cors,
                 },
             });
         }
@@ -480,7 +502,7 @@ async function importActivityAsRoute(authToken, activityId) {
                 status: streamsResponse.status,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...corsHeaders,
+                    ...cors,
                 },
             });
         }
@@ -497,7 +519,7 @@ async function importActivityAsRoute(authToken, activityId) {
             status: 200,
             headers: {
                 'Content-Type': 'application/json',
-                ...corsHeaders,
+                ...cors,
             },
         });
 
@@ -510,7 +532,7 @@ async function importActivityAsRoute(authToken, activityId) {
             status: 500,
             headers: {
                 'Content-Type': 'application/json',
-                ...corsHeaders,
+                ...cors,
             },
         });
     }
@@ -554,6 +576,7 @@ function convertStravaActivityToRoute(activity, streams) {
 // Bulk import activities between two dates with optional type filtering
 async function bulkImportActivities(request, authToken) {
     console.log('📥 Starting bulk import');
+    const cors = corsHeaders(request);
 
     try {
         const body = await request.json();
@@ -567,7 +590,7 @@ async function bulkImportActivities(request, authToken) {
                 status: 400,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...corsHeaders,
+                    ...cors,
                 },
             });
         }
@@ -582,7 +605,7 @@ async function bulkImportActivities(request, authToken) {
                 status: 400,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...corsHeaders,
+                    ...cors,
                 },
             });
         }
@@ -595,7 +618,7 @@ async function bulkImportActivities(request, authToken) {
                 status: 400,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...corsHeaders,
+                    ...cors,
                 },
             });
         }
@@ -662,7 +685,7 @@ async function bulkImportActivities(request, authToken) {
                     status: response.status,
                     headers: {
                         'Content-Type': 'application/json',
-                        ...corsHeaders,
+                        ...cors,
                     },
                 });
             }
@@ -753,7 +776,7 @@ async function bulkImportActivities(request, authToken) {
             status: 200,
             headers: {
                 'Content-Type': 'application/json',
-                ...corsHeaders,
+                ...cors,
             },
         });
 
@@ -766,7 +789,7 @@ async function bulkImportActivities(request, authToken) {
             status: 500,
             headers: {
                 'Content-Type': 'application/json',
-                ...corsHeaders,
+                ...cors,
             },
         });
     }
@@ -824,6 +847,7 @@ async function fetchActivityStreams(activity, authToken) {
 // Create a Year Coin by aggregating all cycling activities for a given year
 async function createYearCoin(request, authToken) {
     console.log('📅 Creating Year Coin');
+    const cors = corsHeaders(request);
 
     try {
         // Read year/types from the JSON body (POST). Fall back to safe
@@ -852,7 +876,7 @@ async function createYearCoin(request, authToken) {
                 status: 400,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...corsHeaders,
+                    ...cors,
                 },
             });
         }
@@ -932,7 +956,7 @@ async function createYearCoin(request, authToken) {
                 status: 404,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...corsHeaders,
+                    ...cors,
                 },
             });
         }
@@ -986,7 +1010,7 @@ async function createYearCoin(request, authToken) {
                 status: 500,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...corsHeaders,
+                    ...cors,
                 },
             });
         }
@@ -1022,7 +1046,7 @@ async function createYearCoin(request, authToken) {
             status: 200,
             headers: {
                 'Content-Type': 'application/json',
-                ...corsHeaders,
+                ...cors,
             },
         });
 
@@ -1035,7 +1059,7 @@ async function createYearCoin(request, authToken) {
             status: 500,
             headers: {
                 'Content-Type': 'application/json',
-                ...corsHeaders,
+                ...cors,
             },
         });
     }
@@ -1265,8 +1289,9 @@ function resampleRoute(route, targetPointCount) {
 // --- Segment Endpoints ---
 
 // Get individual activity details (including segment_efforts)
-async function getActivity(authToken, activityId) {
+async function getActivity(authToken, activityId, request) {
     console.log(`📊 Fetching activity ${activityId} with segment efforts`);
+    const cors = corsHeaders(request);
 
     try {
         const response = await fetch(
@@ -1291,7 +1316,7 @@ async function getActivity(authToken, activityId) {
                 status: response.status,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...corsHeaders,
+                    ...cors,
                 },
             });
         }
@@ -1304,7 +1329,7 @@ async function getActivity(authToken, activityId) {
             headers: {
                 'Content-Type': 'application/json',
                 'Cache-Control': 'private, max-age=3600', // Cache for 1 hour
-                ...corsHeaders,
+                ...cors,
             },
         });
 
@@ -1317,15 +1342,16 @@ async function getActivity(authToken, activityId) {
             status: 500,
             headers: {
                 'Content-Type': 'application/json',
-                ...corsHeaders,
+                ...cors,
             },
         });
     }
 }
 
 // Get segment details
-async function getSegment(authToken, segmentId) {
+async function getSegment(authToken, segmentId, request) {
     console.log(`🏔️ Fetching segment ${segmentId}`);
+    const cors = corsHeaders(request);
 
     try {
         const response = await fetch(
@@ -1350,7 +1376,7 @@ async function getSegment(authToken, segmentId) {
                 status: response.status,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...corsHeaders,
+                    ...cors,
                 },
             });
         }
@@ -1363,7 +1389,7 @@ async function getSegment(authToken, segmentId) {
             headers: {
                 'Content-Type': 'application/json',
                 'Cache-Control': 'private, max-age=3600', // Cache for 1 hour
-                ...corsHeaders,
+                ...cors,
             },
         });
 
@@ -1376,15 +1402,16 @@ async function getSegment(authToken, segmentId) {
             status: 500,
             headers: {
                 'Content-Type': 'application/json',
-                ...corsHeaders,
+                ...cors,
             },
         });
     }
 }
 
 // Import segment as route (fetch segment + streams, convert to route format)
-async function importSegmentAsRoute(authToken, segmentId) {
+async function importSegmentAsRoute(authToken, segmentId, request) {
     console.log(`📥 Importing segment ${segmentId} as route`);
+    const cors = corsHeaders(request);
 
     try {
         // Fetch both segment details and streams in parallel
@@ -1420,7 +1447,7 @@ async function importSegmentAsRoute(authToken, segmentId) {
                 status: segmentResponse.status,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...corsHeaders,
+                    ...cors,
                 },
             });
         }
@@ -1436,7 +1463,7 @@ async function importSegmentAsRoute(authToken, segmentId) {
                 status: streamsResponse.status,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...corsHeaders,
+                    ...cors,
                 },
             });
         }
@@ -1453,7 +1480,7 @@ async function importSegmentAsRoute(authToken, segmentId) {
             status: 200,
             headers: {
                 'Content-Type': 'application/json',
-                ...corsHeaders,
+                ...cors,
             },
         });
 
@@ -1466,7 +1493,7 @@ async function importSegmentAsRoute(authToken, segmentId) {
             status: 500,
             headers: {
                 'Content-Type': 'application/json',
-                ...corsHeaders,
+                ...cors,
             },
         });
     }
