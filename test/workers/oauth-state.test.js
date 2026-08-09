@@ -32,22 +32,28 @@ describe('/api/auth/login sets state cookie', () => {
 });
 
 describe('/api/auth/callback state validation', () => {
+    // On failure the callback (a full-page navigation) returns a friendly HTML
+    // error page with a "Back to login" button, not JSON.
+    const expectAuthErrorPage = async (response) => {
+        expect(response.status).toBe(400);
+        expect(response.headers.get('Content-Type')).toContain('text/html');
+        const body = await response.text();
+        expect(body).toContain('Back to login');
+        expect(body).toContain('href="/api/auth/login"');
+    };
+
     it('rejects when state is missing from the query string', async () => {
         const request = new Request('https://routecoin.me/api/auth/callback?code=abc', {
             headers: { Cookie: 'rcm_oauth_state=some-state' }
         });
         const response = await worker.fetch(request, envMock, {});
-        expect(response.status).toBe(400);
-        const body = await response.json();
-        expect(body.error).toBe('Invalid state');
+        await expectAuthErrorPage(response);
     });
 
     it('rejects when the state cookie is missing', async () => {
         const request = new Request('https://routecoin.me/api/auth/callback?code=abc&state=some-state');
         const response = await worker.fetch(request, envMock, {});
-        expect(response.status).toBe(400);
-        const body = await response.json();
-        expect(body.error).toBe('Invalid state');
+        await expectAuthErrorPage(response);
     });
 
     it('rejects when the query state and cookie state do not match', async () => {
@@ -55,8 +61,15 @@ describe('/api/auth/callback state validation', () => {
             headers: { Cookie: 'rcm_oauth_state=cookie-state' }
         });
         const response = await worker.fetch(request, envMock, {});
+        await expectAuthErrorPage(response);
+    });
+
+    it('shows a friendly page (not JSON) when the user denies access on Strava', async () => {
+        const request = new Request('https://routecoin.me/api/auth/callback?error=access_denied');
+        const response = await worker.fetch(request, envMock, {});
         expect(response.status).toBe(400);
-        const body = await response.json();
-        expect(body.error).toBe('Invalid state');
+        expect(response.headers.get('Content-Type')).toContain('text/html');
+        const body = await response.text();
+        expect(body).toContain('Back to login');
     });
 });

@@ -309,17 +309,21 @@ async function handleAuthCallback(request, env) {
     const clientId = env.STRAVA_CLIENT_ID;
     const clientSecret = env.STRAVA_CLIENT_SECRET;
     if (!clientId || !clientSecret) {
-        return jsonResponse({ error: 'Server misconfiguration', message: 'Missing Strava credentials' }, 500, request);
+        console.error('❌ Missing Strava credentials');
+        return authErrorPage(request, 500, 'Sign-in unavailable',
+            'Strava sign-in is temporarily unavailable. Please try again in a little while.');
     }
     const url = new URL(request.url);
     const code = url.searchParams.get('code');
     const error = url.searchParams.get('error');
     if (error) {
         console.warn('⚠️ OAuth denied by user');
-        return jsonResponse({ error: 'Access denied' }, 400, request);
+        return authErrorPage(request, 400, 'Sign-in cancelled',
+            'You didn’t grant access to your Strava account. You can try connecting again whenever you’re ready.');
     }
     if (!code) {
-        return jsonResponse({ error: 'Missing code' }, 400, request);
+        return authErrorPage(request, 400, 'Sign-in didn’t complete',
+            'We didn’t get the information we needed back from Strava. Please try signing in again.');
     }
 
     // Validate OAuth state to prevent login CSRF
@@ -328,7 +332,8 @@ async function handleAuthCallback(request, env) {
     const cookieState = cookies[OAUTH_STATE_COOKIE];
     if (!queryState || !cookieState || queryState !== cookieState) {
         console.warn('⚠️ OAuth state mismatch or missing');
-        return jsonResponse({ error: 'Invalid state' }, 400, request);
+        return authErrorPage(request, 400, 'Your sign-in session expired',
+            'For your security we couldn’t verify this sign-in — this usually happens if the login took a while or an old tab was used. Please try again.');
     }
 
     // Exchange code for token
@@ -345,13 +350,14 @@ async function handleAuthCallback(request, env) {
     if (!tokenResp.ok) {
         const body = await tokenResp.text();
         console.error('❌ Token exchange failed', tokenResp.status, body);
-        return jsonResponse({ error: 'Token exchange failed', status: tokenResp.status }, 500, request);
+        return authErrorPage(request, 500, 'Sign-in didn’t complete', GENERIC_AUTH_FAIL);
     }
     const tokenData = await tokenResp.json();
     const accessToken = tokenData.access_token;
-    
+
     if (!accessToken) {
-        return jsonResponse({ error: 'No access token returned' }, 500, request);
+        console.error('❌ No access token returned');
+        return authErrorPage(request, 500, 'Sign-in didn’t complete', GENERIC_AUTH_FAIL);
     }
     const cookieSecure = isHttps(request);
     const accessCookie = buildSetCookie(COOKIE_NAME, encodeURIComponent(accessToken), { maxAge: 21600, secure: cookieSecure }); // 6h
@@ -409,6 +415,67 @@ async function handleAuthLogout(request, env) {
 function jsonResponse(obj, status, request) {
     return new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders(request) } });
 }
+
+// A friendly, self-contained HTML page shown when an OAuth callback fails.
+// The callback is a full-page navigation, so a raw JSON body would render as an
+// ugly blank page - this gives the user a clear message and a one-click retry.
+// All content is static/developer-controlled (no user input interpolated).
+export function authErrorPage(request, status, heading, message) {
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign-in issue · RouteCoinMe</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:#f4f6fb; color:#1f2937; padding:24px; }
+  .card { background:#fff; max-width:440px; width:100%; border-radius:16px; padding:40px 32px;
+    box-shadow:0 10px 40px rgba(0,0,0,.08); text-align:center; }
+  .icon { font-size:48px; line-height:1; margin-bottom:16px; }
+  h1 { font-size:22px; margin:0 0 12px; }
+  p { font-size:15px; line-height:1.6; color:#4b5563; margin:0 0 28px; }
+  .btn { display:inline-block; background:#fc4c02; color:#fff; text-decoration:none;
+    font-weight:600; padding:13px 28px; border-radius:10px; font-size:15px; }
+  .btn:hover { background:#e34402; }
+  .home { display:block; margin-top:18px; color:#6b7280; text-decoration:none; font-size:14px; }
+  .home:hover { text-decoration:underline; }
+  .brand { margin-top:28px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:#9ca3af; }
+  @media (prefers-color-scheme: dark) {
+    body { background:#0f1420; color:#e5e7eb; }
+    .card { background:#1a2130; box-shadow:0 10px 40px rgba(0,0,0,.4); }
+    p { color:#9ca3af; }
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">🔒</div>
+    <h1>${heading}</h1>
+    <p>${message}</p>
+    <a class="btn" href="/api/auth/login">Back to login</a>
+    <a class="home" href="/">Return to RouteCoinMe</a>
+    <div class="brand">RouteCoinMe</div>
+  </div>
+</body>
+</html>`;
+    return new Response(html, {
+        status,
+        headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff',
+            'Referrer-Policy': 'strict-origin-when-cross-origin',
+            'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'",
+        },
+    });
+}
+
+// Generic copy reused for the "we couldn't finish the handshake" failure paths.
+const GENERIC_AUTH_FAIL = 'We couldn’t finish connecting your Strava account. Please try again.';
 
 // Handle Strava API requests
 function checkStravaToken(request) {
