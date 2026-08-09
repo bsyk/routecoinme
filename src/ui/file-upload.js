@@ -2539,7 +2539,7 @@ class FileUploadHandler {
                                onchange="window.fileUploader.toggleRouteVisibility('${route.id}')">
                     </div>
                     <div class="route-item-info">
-                        <h4 title="${route.filename}">${index + 1}. ${this.truncateFilename(route.filename)}</h4>
+                        <h4 title="${this.escapeXml(route.filename)}">${index + 1}. ${this.escapeXml(this.truncateFilename(route.filename))}</h4>
                         <div class="route-item-stats">
                             <span>📏 ${distanceDisplay}</span>
                             <span>⛰️ ${elevationDisplay}</span>
@@ -2637,7 +2637,7 @@ class FileUploadHandler {
             }
 
             const rawName = coin.name || 'Untitled Coin';
-            const safeName = this.escapeXml ? this.escapeXml(rawName) : rawName;
+            const safeName = this.escapeXml(rawName);
 
             return `
                 <div class="${classes.join(' ')}" data-coin-id="${coin.id}" onclick="window.fileUploader.selectSavedCoin('${coin.id}')">

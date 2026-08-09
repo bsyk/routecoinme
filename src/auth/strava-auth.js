@@ -1,4 +1,5 @@
 import unitPreferences from '../utils/unit-preferences.js';
+import { escapeHtml } from '../utils/escape-html.js';
 
 // Strava OAuth Authentication Client
 // Works with Cloudflare Worker for server-side OAuth flow
@@ -395,9 +396,9 @@ class StravaAuth {
             
             return `
                 <div class="activity-item" style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px; background: white;">
-                    <strong>${activity.name}</strong>
+                    <strong>${escapeHtml(activity.name)}</strong>
                     <br>
-                    <small>${activity.sport_type || activity.type} • ${distanceDisplay} • ${activity.start_date_local}</small>
+                    <small>${escapeHtml(activity.sport_type || activity.type)} • ${distanceDisplay} • ${escapeHtml(activity.start_date_local)}</small>
                     <br>
                     <button class="btn btn-sm ${buttonClass} import-activity-btn" onclick="window.stravaAuth.importActivity('${activity.id}')" style="margin-top: 5px; transition: all 0.3s ease;">
                         ${buttonIcon} ${buttonText}
@@ -1250,9 +1251,9 @@ class StravaAuth {
 
                 const activitiesHTML = activities.map(activity => `
                     <div class="activity-item" style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px; background: white;">
-                        <strong>${activity.name}</strong>
+                        <strong>${escapeHtml(activity.name)}</strong>
                         <br>
-                        <small>${activity.sport_type || activity.type} • ${distanceDisplay(activity)} • ${activity.start_date_local}</small>
+                        <small>${escapeHtml(activity.sport_type || activity.type)} • ${distanceDisplay(activity)} • ${escapeHtml(activity.start_date_local)}</small>
                         <br>
                         <button class="btn btn-sm btn-primary" onclick="window.stravaAuth.showSegmentsForActivity('${activity.id}')" style="margin-top: 5px;">
                             🏔️ View Segments
@@ -1346,7 +1347,7 @@ class StravaAuth {
                         <div class="segment-item" style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px; background: white;">
                             <div style="display: flex; justify-content: space-between; align-items: start;">
                                 <div style="flex: 1;">
-                                    <strong>${segment.name}</strong> ${badges}
+                                    <strong>${escapeHtml(segment.name)}</strong> ${badges}
                                     <br>
                                     <small>
                                         ${distanceDisplay} •
@@ -1365,7 +1366,7 @@ class StravaAuth {
                 }).join('');
 
                 modalContent.innerHTML = `
-                    <h3>🏔️ Segments from "${activity.name}"</h3>
+                    <h3>🏔️ Segments from "${escapeHtml(activity.name)}"</h3>
                     <div class="segments-list" style="max-height: 400px; overflow-y: auto; margin: 15px 0;">
                         ${segmentsHTML}
                     </div>

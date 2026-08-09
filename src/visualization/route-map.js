@@ -1,6 +1,7 @@
 // Route Map Visualization using Leaflet.js
 import L from 'leaflet';
 import unitPreferences from '../utils/unit-preferences.js';
+import { escapeHtml } from '../utils/escape-html.js';
 
 class RouteMapVisualization {
     constructor(containerId = 'route-map') {
@@ -221,7 +222,7 @@ class RouteMapVisualization {
 
         return `
             <div class="route-popup-content">
-                <h4>${routeData.filename || 'Unnamed Route'}</h4>
+                <h4>${escapeHtml(routeData.filename || 'Unnamed Route')}</h4>
                 <div class="route-stats-popup">
                     <div><strong>📏 Distance:</strong> ${distanceDisplay}</div>
                     <div><strong>⛰️ Elevation Gain:</strong> ${elevationDisplay}</div>
@@ -229,7 +230,7 @@ class RouteMapVisualization {
                     <div><strong>📅 Date:</strong> ${formattedDate}</div>
                     <div><strong>📍 Points:</strong> ${routeData.pointCount || 0}</div>
                 </div>
-                ${routeData.metadata?.description ? `<p><em>${routeData.metadata.description}</em></p>` : ''}
+                ${routeData.metadata?.description ? `<p><em>${escapeHtml(routeData.metadata.description)}</em></p>` : ''}
             </div>
         `;
     }
