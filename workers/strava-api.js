@@ -117,6 +117,16 @@ export function clampPerPage(v) {
     return Math.min(200, Math.max(1, n));
 }
 
+// SHA-256 hex digest of a token, used as a per-token rate-limit key so raw
+// access tokens never appear as rate limiter keys/logs.
+export async function hashToken(token) {
+    const data = new TextEncoder().encode(token);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(digest))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+}
+
 export default {
     async fetch(request, env, ctx) {
         const cors = corsHeaders(request);
@@ -154,6 +164,24 @@ export default {
                 const checkToken = checkStravaToken(request);
                 if (!checkToken.authToken) {
                     return checkToken;
+                }
+
+                // Per-token rate limiting - guarded so local/dev/tests without
+                // the binding configured continue to work unthrottled.
+                if (env.API_RATE_LIMITER) {
+                    const rateLimitKey = await hashToken(checkToken.authToken);
+                    const { success } = await env.API_RATE_LIMITER.limit({ key: rateLimitKey });
+                    if (!success) {
+                        console.warn('⚠️ Rate limit exceeded');
+                        return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), {
+                            status: 429,
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Retry-After': '60',
+                                ...cors,
+                            },
+                        });
+                    }
                 }
 
                 if (url.pathname === '/api/strava/activities') {
