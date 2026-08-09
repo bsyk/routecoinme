@@ -136,6 +136,13 @@ function isHttps(request) {
     return url.protocol === 'https:';
 }
 
+const OAUTH_STATE_COOKIE = 'rcm_oauth_state';
+
+// Generate a fresh, unpredictable OAuth state value
+export function generateState() {
+    return crypto.randomUUID();
+}
+
 // --- Auth Handlers ---
 async function handleAuthLogin(request, env) {
     console.log('🔐 Starting Strava OAuth login');
@@ -147,8 +154,14 @@ async function handleAuthLogin(request, env) {
     const origin = `${url.protocol}//${url.host}`;
     const redirectUri = encodeURIComponent(`${origin}/api/auth/callback`);
     const scope = 'read,activity:read,activity:read_all';
-    const authUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&approval_prompt=auto&scope=${scope}`;
-    return new Response(null, { status: 302, headers: { Location: authUrl, ...corsHeaders } });
+    const state = generateState();
+    const authUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&approval_prompt=auto&scope=${scope}&state=${state}`;
+    const cookieSecure = isHttps(request);
+    const stateCookie = buildSetCookie(OAUTH_STATE_COOKIE, state, { maxAge: 600, secure: cookieSecure });
+    return new Response(null, {
+        status: 302,
+        headers: { Location: authUrl, 'Set-Cookie': stateCookie, ...corsHeaders }
+    });
 }
 
 async function handleAuthCallback(request, env) {
@@ -168,6 +181,16 @@ async function handleAuthCallback(request, env) {
     if (!code) {
         return jsonResponse({ error: 'Missing code' }, 400);
     }
+
+    // Validate OAuth state to prevent login CSRF
+    const queryState = url.searchParams.get('state');
+    const cookies = parseCookies(request);
+    const cookieState = cookies[OAUTH_STATE_COOKIE];
+    if (!queryState || !cookieState || queryState !== cookieState) {
+        console.warn('⚠️ OAuth state mismatch or missing');
+        return jsonResponse({ error: 'Invalid state' }, 400);
+    }
+
     // Exchange code for token
     const tokenResp = await fetch('https://www.strava.com/oauth/token', {
         method: 'POST',
@@ -192,16 +215,19 @@ async function handleAuthCallback(request, env) {
     }
     const cookieSecure = isHttps(request);
     const accessCookie = buildSetCookie(COOKIE_NAME, encodeURIComponent(accessToken), { maxAge: 21600, secure: cookieSecure }); // 6h
+    const expiredStateCookie = buildSetCookie(OAUTH_STATE_COOKIE, '', { maxAge: 0, secure: cookieSecure });
     const origin = `${url.protocol}//${url.host}`;
+
     // Redirect to UI callback page where frontend will call /api/auth/status
-    return new Response(null, {
-        status: 302,
-        headers: {
-            Location: `${origin}/auth/callback`,
-            'Set-Cookie': accessCookie,
-            ...corsHeaders
-        }
+    // Use a Headers object so we can append multiple Set-Cookie headers
+    const headers = new Headers({
+        Location: `${origin}/auth/callback`,
+        ...corsHeaders
     });
+    headers.append('Set-Cookie', accessCookie);
+    headers.append('Set-Cookie', expiredStateCookie);
+
+    return new Response(null, { status: 302, headers });
 }
 
 async function handleAuthStatus(request, env) {
