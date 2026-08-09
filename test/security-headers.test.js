@@ -33,9 +33,13 @@ describe('static security headers (_headers)', () => {
         expect(cspLine).toContain("connect-src 'self'");
     });
 
-    it('allows only the map tile + unpkg origins the app actually uses', () => {
+    it('allows the OSM map tile origin the app actually uses', () => {
         expect(cspLine).toContain('https://*.tile.openstreetmap.org');
-        expect(cspLine).toContain('https://unpkg.com');
+    });
+
+    it('does not allow any third-party CDN (Leaflet CSS is bundled first-party)', () => {
+        expect(cspLine).not.toContain('unpkg.com');
+        expect(cspLine).not.toMatch(/gstatic|googleapis|jsdelivr|cdnjs/);
     });
 
     it('sets nosniff, frame-deny, referrer and HSTS headers', () => {

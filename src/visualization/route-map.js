@@ -1,5 +1,8 @@
 // Route Map Visualization using Leaflet.js
 import L from 'leaflet';
+// Bundle Leaflet's stylesheet from the npm package so it's served from our own
+// origin (no unpkg CDN) - keeps users' requests first-party for privacy.
+import 'leaflet/dist/leaflet.css';
 import unitPreferences from '../utils/unit-preferences.js';
 import { escapeHtml } from '../utils/escape-html.js';
 
