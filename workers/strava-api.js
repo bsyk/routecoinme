@@ -100,6 +100,23 @@ export function sanitizeActivityTypes(arr) {
     return arr.filter(t => VALID_ACTIVITY_TYPES.has(t));
 }
 
+// A path-derived Strava ID must be a plain non-empty digit string
+export function isValidId(id) {
+    return typeof id === 'string' && /^\d+$/.test(id);
+}
+
+const DEFAULT_PER_PAGE = 30; // Strava's own default
+
+// Clamp a requested per_page value into Strava's allowed 1..200 range,
+// falling back to the default when the input isn't a usable number.
+export function clampPerPage(v) {
+    const n = parseInt(v, 10);
+    if (!Number.isFinite(n)) {
+        return DEFAULT_PER_PAGE;
+    }
+    return Math.min(200, Math.max(1, n));
+}
+
 export default {
     async fetch(request, env, ctx) {
         const cors = corsHeaders(request);
@@ -144,6 +161,9 @@ export default {
                 }
                 if (url.pathname.startsWith('/api/strava/import-activity/')) {
                     const importActivityId = url.pathname.split('/')[4];
+                    if (!isValidId(importActivityId)) {
+                        return jsonResponse({ error: 'Invalid id' }, 400, request);
+                    }
                     return await importActivityAsRoute(checkToken.authToken, importActivityId, request);
                 }
                 if (url.pathname === '/api/strava/bulk-import' && request.method === 'POST') {
@@ -156,14 +176,23 @@ export default {
                 // Segment endpoints - check import-segment before segments/:id to avoid route collision
                 if (url.pathname.startsWith('/api/strava/import-segment/')) {
                     const segmentId = url.pathname.split('/')[4];
+                    if (!isValidId(segmentId)) {
+                        return jsonResponse({ error: 'Invalid id' }, 400, request);
+                    }
                     return await importSegmentAsRoute(checkToken.authToken, segmentId, request);
                 }
-                if (url.pathname.match(/^\/api\/strava\/segments\/\d+$/)) {
+                if (url.pathname.startsWith('/api/strava/segments/')) {
                     const segmentId = url.pathname.split('/')[4];
+                    if (!isValidId(segmentId)) {
+                        return jsonResponse({ error: 'Invalid id' }, 400, request);
+                    }
                     return await getSegment(checkToken.authToken, segmentId, request);
                 }
-                if (url.pathname.match(/^\/api\/strava\/activities\/\d+$/)) {
+                if (url.pathname.startsWith('/api/strava/activities/')) {
                     const activityId = url.pathname.split('/')[4];
+                    if (!isValidId(activityId)) {
+                        return jsonResponse({ error: 'Invalid id' }, 400, request);
+                    }
                     return await getActivity(checkToken.authToken, activityId, request);
                 }
             }
@@ -175,10 +204,10 @@ export default {
             });
 
         } catch (error) {
+            // Log full detail server-side only - never leak error internals to the client
             console.error('❌ Worker error:', error);
             return new Response(JSON.stringify({
-                error: 'Internal server error',
-                message: error.message
+                error: 'Internal server error'
             }), {
                 status: 500,
                 headers: {
@@ -384,11 +413,22 @@ async function getActivities(authToken, searchParams, request) {
         // Build Strava API URL with query parameters
         const stravaUrl = new URL('https://www.strava.com/api/v3/athlete/activities');
 
-        // Copy allowed parameters
-        const allowedParams = ['page', 'per_page', 'before', 'after'];
-        allowedParams.forEach(param => {
+        // Copy allowed parameters, clamping/validating as we go
+        if (searchParams.has('per_page')) {
+            stravaUrl.searchParams.set('per_page', clampPerPage(searchParams.get('per_page')).toString());
+        }
+        if (searchParams.has('page')) {
+            const pageNum = parseInt(searchParams.get('page'), 10);
+            const validPage = Number.isInteger(pageNum) && pageNum >= 1 ? pageNum : 1;
+            stravaUrl.searchParams.set('page', validPage.toString());
+        }
+        ['before', 'after'].forEach(param => {
             if (searchParams.has(param)) {
-                stravaUrl.searchParams.set(param, searchParams.get(param));
+                const value = searchParams.get(param);
+                // Strava expects Unix timestamps (integer seconds) - drop anything else
+                if (/^\d+$/.test(value)) {
+                    stravaUrl.searchParams.set(param, value);
+                }
             }
         });
 
