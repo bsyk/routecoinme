@@ -1564,7 +1564,7 @@ class FileUploadHandler {
 
     calculateCombinedStats(routes) {
         return routes.reduce((acc, route) => {
-            const stats = this.routeManipulator.calculateRouteStats(route);
+            const stats = this.routeManipulator.getRouteStats(route);
             return {
                 distance: acc.distance + (stats.distance || 0),
                 elevationGain: acc.elevationGain + (stats.elevationGain || 0),
@@ -2000,20 +2000,7 @@ class FileUploadHandler {
         console.log(`🔗 Creating distance-based aggregation with ${elevationMode} elevation using RouteManipulator...`);
         
         // IMPORTANT: Preserve the true aggregated statistics before scaling for visualization
-        const originalStats = routes.reduce((acc, route) => {
-            const rstats = this.routeManipulator.calculateRouteStats(route);
-            return {
-                distance: acc.distance + rstats.distance,
-                elevationGain: acc.elevationGain + rstats.elevationGain,
-                elevationLoss: acc.elevationLoss + rstats.elevationLoss,
-                duration: acc.duration + rstats.duration
-            };
-        }, {
-            distance: 0,
-            elevationGain: 0,
-            elevationLoss: 0,
-            duration: 0
-        });
+        const originalStats = this.calculateCombinedStats(routes);
 
         const originalDistanceDisplay = this.formatDistance(originalStats.distance);
         const originalElevationDisplay = this.formatElevation(originalStats.elevationGain, { precision: 1 });
@@ -2076,20 +2063,7 @@ class FileUploadHandler {
         console.log(`⏰ Creating time-based aggregation with ${elevationMode} elevation using RouteManipulator...`);
         
         // IMPORTANT: Preserve the true aggregated statistics before scaling for visualization
-        const originalStats = routes.reduce((acc, route) => {
-            const rstats = this.routeManipulator.calculateRouteStats(route);
-            return {
-                distance: acc.distance + rstats.distance,
-                elevationGain: acc.elevationGain + rstats.elevationGain,
-                elevationLoss: acc.elevationLoss + rstats.elevationLoss,
-                duration: acc.duration + rstats.duration
-            };
-        }, {
-            distance: 0,
-            elevationGain: 0,
-            elevationLoss: 0,
-            duration: 0
-        });
+        const originalStats = this.calculateCombinedStats(routes);
 
         const timeAggregationDistanceDisplay = this.formatDistance(originalStats.distance);
         const timeAggregationElevationDisplay = this.formatElevation(originalStats.elevationGain, { precision: 1 });
