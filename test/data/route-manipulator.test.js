@@ -777,6 +777,65 @@ describe('RouteManipulator', () => {
         });
     });
 
+    describe('getRouteStats', () => {
+        // Points give: gain 110, loss 30, duration 600s, distance ~4.7km
+        const points = [
+            { lat: 0.0, lon: 0.0, elevation: 100, timestamp: '2024-01-01T10:00:00Z' },
+            { lat: 0.01, lon: 0.01, elevation: 150, timestamp: '2024-01-01T10:05:00Z' },
+            { lat: 0.02, lon: 0.02, elevation: 120, timestamp: '2024-01-01T10:10:00Z' },
+            { lat: 0.03, lon: 0.03, elevation: 180 }
+        ];
+
+        it('prefers the totals stored on the route over the points', () => {
+            // e.g. a Year Coin: Strava totals stored, resampled points undercount
+            const route = createTestRoute({
+                points,
+                distance: 9000,
+                elevationGain: 154361,
+                elevationLoss: 154000,
+                duration: 1234567
+            });
+
+            expect(manipulator.getRouteStats(route)).toEqual({
+                distance: 9000,
+                elevationGain: 154361,
+                elevationLoss: 154000,
+                duration: 1234567
+            });
+        });
+
+        it('computes only the totals missing from the route', () => {
+            // Worker-built routes store no elevationLoss
+            const route = createTestRoute({ points, elevationLoss: undefined });
+
+            const stats = manipulator.getRouteStats(route);
+
+            expect(stats.distance).toBe(10.5);
+            expect(stats.elevationGain).toBe(110);
+            expect(stats.elevationLoss).toBe(30);
+            expect(stats.duration).toBe(900);
+        });
+
+        it('falls back to the points when no totals are stored', () => {
+            const route = {
+                points,
+                distance: undefined,
+                elevationGain: null,
+                elevationLoss: Number.NaN
+            };
+
+            const stats = manipulator.getRouteStats(route);
+
+            expect(stats).toEqual(manipulator.calculateRouteStats(route));
+        });
+
+        it('keeps a stored zero rather than recomputing it', () => {
+            const route = createTestRoute({ points, elevationGain: 0 });
+
+            expect(manipulator.getRouteStats(route).elevationGain).toBe(0);
+        });
+    });
+
     describe('getRouteBounds', () => {
         it('should calculate min/max coordinates', () => {
             const route = createTestRoute({

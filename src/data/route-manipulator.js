@@ -822,7 +822,29 @@ class RouteManipulator {
         return R * c; // Distance in kilometers
     }
 
-    // Utility: Calculate route statistics
+    // Utility: Route statistics, preferring the totals stored on the route.
+    // Stored totals can be more accurate than the points: Strava-sourced routes
+    // (e.g. Year Coins) carry Strava's own totals while their points are heavily
+    // resampled, which cuts corners and flattens climbs.
+    getRouteStats(route) {
+        let computed = null;
+        const pick = (key) => {
+            if (Number.isFinite(route?.[key])) {
+                return route[key];
+            }
+            computed = computed || this.calculateRouteStats(route);
+            return computed[key];
+        };
+
+        return {
+            distance: pick('distance'),
+            elevationGain: pick('elevationGain'),
+            elevationLoss: pick('elevationLoss'),
+            duration: pick('duration')
+        };
+    }
+
+    // Utility: Calculate route statistics from the route's points
     calculateRouteStats(route) {
         if (!route.points || route.points.length < 2) {
             return {
