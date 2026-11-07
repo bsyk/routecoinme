@@ -2,6 +2,7 @@
 import StravaAuth from './auth/strava-auth.js';
 import FileUploadHandler from './ui/file-upload.js';
 import unitPreferences from './utils/unit-preferences.js';
+import { getDefaultCoinYear, getSelectableCoinYears } from './utils/coin-year.js';
 
 console.log('🏔️ RouteCoinMe - Loading...');
 
@@ -109,7 +110,8 @@ class RouteCoinMe {
             });
         }
 
-        // Year Coin - all 2025 cycling activities
+        // Year Coin - all cycling activities for a chosen year
+        this.updateYearCoinLabels();
         const yearCoinBtn = document.getElementById('year-coin-btn');
         if (yearCoinBtn) {
             yearCoinBtn.addEventListener('click', () => {
@@ -178,6 +180,74 @@ class RouteCoinMe {
         this.stravaAuth?.showSegmentImportDialog();
     }
 
+    updateYearCoinLabels() {
+        const year = getDefaultCoinYear();
+        const title = document.getElementById('year-coin-title');
+        const description = document.getElementById('year-coin-description');
+        if (title) title.textContent = `${year} Route Coin`;
+        if (description) {
+            description.textContent = `Combine all your ${year} cycling activities into one coin (or pick another year)`;
+        }
+    }
+
+    showYearCoinPicker() {
+        return new Promise((resolve) => {
+            const defaultYear = getDefaultCoinYear();
+            const options = getSelectableCoinYears()
+                .map((year) => `<option value="${year}"${year === defaultYear ? ' selected' : ''}>${year}</option>`)
+                .join('');
+
+            const overlay = document.createElement('div');
+            overlay.id = 'year-coin-picker';
+            overlay.style.cssText = `
+                position: fixed;
+                inset: 0;
+                background: rgba(15, 23, 42, 0.45);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+            `;
+            overlay.innerHTML = `
+                <div role="dialog" aria-modal="true" aria-labelledby="year-coin-picker-title" style="background: white; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); padding: 30px 40px; text-align: center; min-width: 300px; max-width: calc(100vw - 32px);">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">📅</div>
+                    <h3 id="year-coin-picker-title" style="margin: 0 0 0.5rem 0;">Create a Year Coin</h3>
+                    <p style="margin: 0 0 1rem 0; color: #64748b;">Choose which year of cycling activities to combine.</p>
+                    <label for="year-coin-select" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Year</label>
+                    <select id="year-coin-select" style="font-size: 1rem; padding: 0.4rem 0.75rem; border-radius: 6px; border: 1px solid #cbd5e1; margin-bottom: 1.5rem;">
+                        ${options}
+                    </select>
+                    <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+                        <button type="button" class="btn btn-secondary" data-action="cancel">Cancel</button>
+                        <button type="button" class="btn btn-primary" data-action="create">Create Coin</button>
+                    </div>
+                </div>
+            `;
+
+            const select = overlay.querySelector('#year-coin-select');
+            const close = (result) => {
+                document.removeEventListener('keydown', onKeyDown);
+                overlay.remove();
+                resolve(result);
+            };
+            const onKeyDown = (event) => {
+                if (event.key === 'Escape') close(null);
+            };
+
+            overlay.addEventListener('click', (event) => {
+                if (event.target === overlay) close(null);
+            });
+            overlay.querySelector('[data-action="cancel"]').addEventListener('click', () => close(null));
+            overlay.querySelector('[data-action="create"]').addEventListener('click', () => {
+                close(parseInt(select.value, 10));
+            });
+            document.addEventListener('keydown', onKeyDown);
+
+            document.body.appendChild(overlay);
+            select.focus();
+        });
+    }
+
     async handleYearCoin() {
         // Check if user is authenticated with Strava
         const isAuthenticated = this.stravaAuth?.getCachedAuthStatus?.() ?? false;
@@ -185,6 +255,12 @@ class RouteCoinMe {
         if (!isAuthenticated) {
             alert('Please connect with Strava to create a Year Coin from your activities.');
             this.stravaAuth?.authenticate();
+            return;
+        }
+
+        const year = await this.showYearCoinPicker();
+        if (!year) {
+            console.log('📅 Year Coin cancelled');
             return;
         }
 
@@ -206,7 +282,7 @@ class RouteCoinMe {
         `;
         loadingNotification.innerHTML = `
             <div style="font-size: 3rem; margin-bottom: 1rem;">📅</div>
-            <h3 style="margin: 0 0 0.5rem 0;">Creating Your 2025 Year Coin</h3>
+            <h3 style="margin: 0 0 0.5rem 0;">Creating Your ${year} Year Coin</h3>
             <p style="margin: 0 0 1rem 0; color: #64748b;">Fetching and aggregating your cycling activities...</p>
             <div class="spinner" style="margin: 0 auto; width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; animation: spin 1s linear infinite;"></div>
             <style>
@@ -218,14 +294,14 @@ class RouteCoinMe {
         document.body.appendChild(loadingNotification);
 
         try {
-            console.log('📅 Fetching 2025 activities for Year Coin...');
+            console.log(`📅 Fetching ${year} activities for Year Coin...`);
 
             // Call the worker endpoint
             const response = await fetch('/api/strava/year-coin', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ year: 2025 })
+                body: JSON.stringify({ year })
             });
 
             if (!response.ok) {
