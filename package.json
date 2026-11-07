@@ -27,7 +27,7 @@
     "leaflet": "^1.9.4",
     "online-3d-viewer": "^0.18.0",
     "proj4": "^2.20.2",
-    "three": "^0.158.0"
+    "three": "^0.176.0"
   },
   "keywords": [
     "gps",
